@@ -1,0 +1,16 @@
+/.idea/
+/target/
+/legacy.yaml
+/ci-deploy
+/.sonar
+/.scannerwork
+deploy.env
+generated-config.yaml
+user-logs/*.log
+.vs/
+.DS_Store
+tmp/
+*.bleve
+media/
+cache/
+/docker/
