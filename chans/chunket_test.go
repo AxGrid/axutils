@@ -17,7 +17,7 @@ import (
 zed (19.03.2024)
 */
 
-func TestChunker_Chunk(t *testing.T) {
+func TestChunkChan_Chunk(t *testing.T) {
 	chunker := NewChunkChan[int]().WithChunkSize(5).WithChunkTimeout(time.Millisecond * 100).Build()
 	assert.NotNil(t, chunker)
 	for i := 0; i < 100; i++ {
@@ -32,7 +32,7 @@ func TestChunker_Chunk(t *testing.T) {
 	}
 }
 
-func TestChunker_ChunkTimeout(t *testing.T) {
+func TestChunkChan_ChunkTimeout(t *testing.T) {
 	chunker := NewChunkChan[int]().WithChunkSize(5).WithChunkTimeout(time.Millisecond * 100).Build()
 	assert.NotNil(t, chunker)
 	for i := 0; i < 4; i++ {
@@ -42,7 +42,7 @@ func TestChunker_ChunkTimeout(t *testing.T) {
 	t.Logf("Recv: %v", chunk)
 }
 
-func TestChunker_ChunkAndShard(t *testing.T) {
+func TestChunkChan_ChunkAndShard(t *testing.T) {
 	inc := make(chan *simpleAxChunkAndShardMessage, 100)
 	ctx, cancelFn := context.WithTimeout(context.Background(), time.Millisecond*100)
 	sharder, err := NewShardChan[*simpleAxChunkAndShardMessage]().WithContext(ctx).WithShardCount(2).WithIncomingChan(inc).WithShardFunc(func(m *simpleAxChunkAndShardMessage) int {
