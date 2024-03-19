@@ -18,6 +18,8 @@ type ShardChunk[T any] struct {
 	chunkers []*ChunkChan[T]
 }
 
+type ShardChunkFunc[T any] func(int, []T)
+
 func (s *ShardChunk[T]) ShardCount() int {
 	return s.sharder.ShardCount()
 }
@@ -35,6 +37,7 @@ type ShardChunkBuilder[T any] struct {
 	chunkTimeout       time.Duration
 	shardCount         int
 	shardFunc          ShardFunc[T]
+	shardWorker        ShardChunkFunc[T]
 	incomingChan       chan T
 	incomingBufferSize int
 	outgoingBufferSize int
@@ -49,6 +52,11 @@ func NewShardChunk[T any]() *ShardChunkBuilder[T] {
 		chunkTimeout:       time.Millisecond * 50,
 		chunkSize:          500,
 	}
+}
+
+func (b *ShardChunkBuilder[T]) WithShardWorker(shardWorker ShardChunkFunc[T]) *ShardChunkBuilder[T] {
+	b.shardWorker = shardWorker
+	return b
 }
 
 func (b *ShardChunkBuilder[T]) WithContext(ctx context.Context) *ShardChunkBuilder[T] {
@@ -113,6 +121,21 @@ func (b *ShardChunkBuilder[T]) Build() (*ShardChunk[T], error) {
 			}
 		}(i)
 	}
+	if b.shardWorker != nil {
+		for i := 0; i < b.shardCount; i++ {
+			go func(k int) {
+				for {
+					select {
+					case <-b.ctx.Done():
+						return
+					case batch := <-chunkers[k].C():
+						b.shardWorker(k, batch)
+					}
+				}
+			}(i)
+		}
+	}
+
 	return &ShardChunk[T]{
 		sharder:  sharder,
 		chunkers: chunkers,
