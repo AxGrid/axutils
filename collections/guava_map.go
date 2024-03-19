@@ -134,7 +134,7 @@ func (m *GuavaMap[K, V]) Get(key K) (V, error) {
 
 	if m.lockLoad != nil {
 		m.lockLoad.Lock(key)
-		if _, ok = m.stored[key]; !ok {
+		if !m.Has(key) {
 			loadedVal, err = m.loadFunc(key)
 		}
 		m.lockLoad.Unlock(key)

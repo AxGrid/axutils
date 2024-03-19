@@ -2,6 +2,8 @@ package collections
 
 import (
 	"github.com/stretchr/testify/assert"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -99,7 +101,9 @@ func TestGuavaMap_GetWithWriteTimeout(t *testing.T) {
 	}).WithUnloadFunc(func(key int, value int) {
 		unloadCount++
 	}).
-		WithMaxCount(50).WithWriteTimeout(time.Millisecond * 20).WithClearTimeout(time.Millisecond * 10).Build()
+		WithWriteTimeout(time.Millisecond * 20).
+		WithClearTimeout(time.Millisecond * 10).
+		Build()
 	for i := 0; i < 100; i++ {
 		v, err := m.Get(i)
 		assert.Nil(t, err)
@@ -111,6 +115,26 @@ func TestGuavaMap_GetWithWriteTimeout(t *testing.T) {
 	assert.Equal(t, 100, unloadCount)
 	assert.Equal(t, 0, m.Size())
 
+}
+
+func TestGuavaMap_LockLoad(t *testing.T) {
+	buildCount := 0
+	m := NewGuavaMap[int, int]().WithMaxCount(10).WithLockLoad(true).WithLoadFunc(func(key int) (int, error) {
+		time.Sleep(100 * time.Millisecond)
+		buildCount++
+		return key * 10, nil
+	}).Build()
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			_, err := m.Get(10)
+			assert.Nil(t, err)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, 1, buildCount)
 }
 
 func BenchmarkGuavaMap_Get(b *testing.B) {
@@ -131,4 +155,24 @@ func BenchmarkGuavaMap_GetWithMaxCount(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		m.Get(i)
 	}
+}
+
+func BenchmarkGuavaMap_LockLoad(b *testing.B) {
+	loadCount := int32(0)
+	m := NewGuavaMap[int, int]().WithLoadFunc(func(key int) (int, error) {
+		time.Sleep(10 * time.Millisecond)
+		atomic.AddInt32(&loadCount, 1)
+		return key*10 + 1, nil
+	}).WithLockLoad(true).Build()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := m.Get(i % 20)
+		if err != nil {
+			b.Fatal()
+		}
+		if val == 0 {
+			b.Fatal()
+		}
+	}
+	println("loadCount", loadCount)
 }
