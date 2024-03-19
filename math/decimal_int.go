@@ -23,3 +23,8 @@ func IntPointMove(value int, shift int) int {
 	}
 	return value
 }
+
+type DecimalValue struct {
+	value int64
+	point int
+}

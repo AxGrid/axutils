@@ -34,6 +34,7 @@ type GuavaMap[K comparable, V any] struct {
 	timeoutSlices      []*timeoutHolder[K]
 	timeoutMu          sync.Mutex
 	clearTimeout       time.Duration
+	lockLoad           *MapMutex[K]
 	ctx                context.Context
 }
 
@@ -121,7 +122,19 @@ func (m *GuavaMap[K, V]) Get(key K) (V, error) {
 	if m.loadFunc == nil {
 		return val, nil
 	}
-	loadedVal, err := m.loadFunc(key)
+	var err error
+	var loadedVal V
+
+	if m.lockLoad != nil {
+		m.lockLoad.Lock(key)
+		if _, ok = m.stored[key]; !ok {
+			loadedVal, err = m.loadFunc(key)
+		}
+		m.lockLoad.Unlock(key)
+	} else {
+		loadedVal, err = m.loadFunc(key)
+	}
+
 	if err != nil {
 		return val, err
 	}
@@ -187,6 +200,7 @@ func (m *GuavaMap[K, V]) Set(key K, val V) {
 
 type GuavaMapBuilder[K comparable, V any] struct {
 	loadFunc           GuavaLoadFunc[K, V]
+	lockLoad           bool
 	maxCount           int
 	unloadFunc         GuavaUnloadFunc[K, V]
 	writeTimeout       time.Duration
@@ -204,6 +218,11 @@ func NewGuavaMap[K comparable, V any]() *GuavaMapBuilder[K, V] {
 
 func (b *GuavaMapBuilder[K, V]) WithContext(ctx context.Context) *GuavaMapBuilder[K, V] {
 	b.ctx = ctx
+	return b
+}
+
+func (b *GuavaMapBuilder[K, V]) WithLockLoad(lockLoad bool) *GuavaMapBuilder[K, V] {
+	b.lockLoad = lockLoad
 	return b
 }
 
@@ -242,6 +261,9 @@ func (b *GuavaMapBuilder[K, V]) Build() *GuavaMap[K, V] {
 		writeTimeout:       b.writeTimeout,
 		enableWriteTimeout: b.enableWriteTimeout,
 		ctx:                b.ctx,
+	}
+	if b.lockLoad {
+		res.lockLoad = NewMapMutex[K]()
 	}
 	if b.maxCount > 0 {
 		res.storedSlice = make([]K, 0, b.maxCount)
