@@ -13,6 +13,8 @@ type ChunkChan[T any] struct {
 	outgoingChan chan []T
 }
 
+
+
 func (c *ChunkChan[T]) Add(item T) {
 	c.incomingChan <- item
 }

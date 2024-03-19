@@ -82,7 +82,7 @@ func TestChunkChan_ChunkAndShard(t *testing.T) {
 	// Вот тут уже сыпим собщения в канал
 	processed := int32(0)
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 104; i++ {
 		wg.Add(1)
 		go func(k int) {
 			m := &simpleAxChunkAndShardMessage{User: k, Ack: make(chan error)}
@@ -93,7 +93,7 @@ func TestChunkChan_ChunkAndShard(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	assert.Equal(t, int32(100), processed)
+	assert.Equal(t, int32(104), processed)
 	cancelFn()
 }
 
