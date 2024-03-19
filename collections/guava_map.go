@@ -59,6 +59,13 @@ func (m *GuavaMap[K, V]) timeoutThreadFunction() {
 	}
 }
 
+func (m *GuavaMap[K, V]) Has(key K) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.stored[key]
+	return ok
+}
+
 func (m *GuavaMap[K, V]) Delete(key K) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
