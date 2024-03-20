@@ -66,6 +66,16 @@ func (m *GuavaMap[K, V]) Has(key K) bool {
 	return ok
 }
 
+func (m *GuavaMap[K, V]) HasOrCreate(key K, value V) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.stored[key]
+	if !ok {
+		m.stored[key] = value
+	}
+	return ok
+}
+
 func (m *GuavaMap[K, V]) Delete(key K) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
