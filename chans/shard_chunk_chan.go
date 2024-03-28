@@ -31,6 +31,18 @@ func (s *ShardChunk[T]) C(key int) chan []T {
 	return s.chunkers[key].C()
 }
 
+// Sizes - Размеры очередей (шардер, чанкер входящий, чанкер исходящий)
+func (s *ShardChunk[T]) Sizes() ([]int, int, int) {
+	shardSizes := s.sharder.Sizes()
+	chunkerTotalSizeIn, chunkerTotalSizeOut := 0, 0
+	for i := 0; i < s.sharder.ShardCount(); i++ {
+		in, out := s.chunkers[i].Sizes()
+		chunkerTotalSizeIn += in
+		chunkerTotalSizeOut += out
+	}
+	return shardSizes, chunkerTotalSizeIn, chunkerTotalSizeOut
+}
+
 type ShardChunkBuilder[T any] struct {
 	ctx                context.Context
 	chunkSize          int

@@ -45,6 +45,14 @@ func (s *ShardChan[T]) Add(msg T) error {
 	}
 }
 
+func (s *ShardChan[T]) Sizes() []int {
+	sizes := make([]int, s.shardCount)
+	for i := 0; i < s.shardCount; i++ {
+		sizes[i] = len(s.outgoingChans[i])
+	}
+	return sizes
+}
+
 type ShardChanBuilder[T any] struct {
 	ctx                context.Context
 	shardFunc          ShardFunc[T]
