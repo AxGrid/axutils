@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+type ChunkFunc[T any] func([]T)
+
 type ChunkChan[T any] struct {
 	ctx          context.Context
 	chunkSize    int
@@ -12,7 +14,6 @@ type ChunkChan[T any] struct {
 	incomingChan chan T
 	outgoingChan chan []T
 }
-
 
 func (c *ChunkChan[T]) Add(item T) {
 	c.incomingChan <- item
@@ -60,6 +61,7 @@ type ChunkChanBuilder[T any] struct {
 	incomingBufferSize int
 	outgoingBufferSize int
 	incomingChan       chan T
+	chunkFunc          ChunkFunc[T]
 }
 
 func NewChunkChan[T any]() *ChunkChanBuilder[T] {
@@ -79,6 +81,11 @@ func (b *ChunkChanBuilder[T]) WithContext(ctx context.Context) *ChunkChanBuilder
 
 func (b *ChunkChanBuilder[T]) WithChunkSize(chunkSize int) *ChunkChanBuilder[T] {
 	b.chunkSize = chunkSize
+	return b
+}
+
+func (b *ChunkChanBuilder[T]) WithChunkFunc(chunkFunc ChunkFunc[T]) *ChunkChanBuilder[T] {
+	b.chunkFunc = chunkFunc
 	return b
 }
 
@@ -113,6 +120,17 @@ func (b *ChunkChanBuilder[T]) Build() *ChunkChan[T] {
 		incomingChan: b.incomingChan,
 		outgoingChan: make(chan []T, b.outgoingBufferSize),
 	}
+
 	go res.run()
+	if b.chunkFunc != nil {
+		go func() {
+			select {
+			case <-b.ctx.Done():
+				return
+			case chunk := <-res.outgoingChan:
+				b.chunkFunc(chunk)
+			}
+		}()
+	}
 	return res
 }

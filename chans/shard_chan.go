@@ -16,6 +16,7 @@ zed (19.03.2024)
 var ErrShardFuncIsNil = errors.New("shard func is nil")
 
 type ShardFunc[T any] func(T) int
+type WorkerFunc[T any] func(int, T)
 
 type ShardChan[T any] struct {
 	ctx           context.Context
@@ -56,6 +57,7 @@ func (s *ShardChan[T]) Sizes() []int {
 type ShardChanBuilder[T any] struct {
 	ctx                context.Context
 	shardFunc          ShardFunc[T]
+	workerFunc         WorkerFunc[T]
 	shardCount         int
 	incomingBufferSize int
 	outgoingBufferSize int
@@ -101,6 +103,11 @@ func (b *ShardChanBuilder[T]) WithIncomingChan(incomingChan chan T) *ShardChanBu
 	return b
 }
 
+func (b *ShardChanBuilder[T]) WithWorkerFunc(workerFunc WorkerFunc[T]) *ShardChanBuilder[T] {
+	b.workerFunc = workerFunc
+	return b
+}
+
 func (b *ShardChanBuilder[T]) Build() (*ShardChan[T], error) {
 	if b.shardFunc == nil {
 		return nil, ErrShardFuncIsNil
@@ -129,5 +136,19 @@ func (b *ShardChanBuilder[T]) Build() (*ShardChan[T], error) {
 			}
 		}
 	}()
+	if b.workerFunc != nil {
+		for i := 0; i < b.shardCount; i++ {
+			go func(k int) {
+				for {
+					select {
+					case <-res.ctx.Done():
+						return
+					case msg := <-res.outgoingChans[k]:
+						b.workerFunc(k, msg)
+					}
+				}
+			}(i)
+		}
+	}
 	return res, nil
 }
