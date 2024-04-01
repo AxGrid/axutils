@@ -72,48 +72,140 @@ func TestGuavaMap_HiLoad(t *testing.T) {
 }
 
 func TestGuavaMap_GetWithMaxCount(t *testing.T) {
-	buildCount := 0
-	unloadCount := 0
-	m := NewGuavaMap[int, int]().WithMaxCount(10).WithLoadFunc(func(key int) (int, error) {
-		buildCount++
+	buildCount := int32(0)
+	unloadCount := int32(0)
+	m := NewGuavaMap[int, int]().WithLoadFunc(func(key int) (int, error) {
+		atomic.AddInt32(&buildCount, 1)
 		return key * 10, nil
 	}).WithUnloadFunc(func(key int, value int) {
-		unloadCount++
+		atomic.AddInt32(&unloadCount, 1)
 	}).
 		WithMaxCount(50).Build()
+
 	for i := 0; i < 100; i++ {
 		v, err := m.Get(i)
 		assert.Nil(t, err)
 		assert.Equal(t, i*10, v)
 	}
+
 	assert.Equal(t, 50, m.Size())
-	assert.Equal(t, 100, buildCount)
+	assert.Equal(t, 100, int(buildCount))
 	time.Sleep(time.Millisecond * 100)
-	assert.Equal(t, 50, unloadCount)
+	assert.Equal(t, 50, int(unloadCount))
+}
+
+func TestGuavaMap_SetWithMaxSize(t *testing.T) {
+
+	buildCount := int32(0)
+	unloadCount := int32(0)
+	m := NewGuavaMap[int, int]().WithMaxCount(50).WithWriteTimeout(time.Millisecond * 200).
+		WithLoadFunc(func(key int) (int, error) {
+			atomic.AddInt32(&buildCount, 1)
+			return key * 10, nil
+		}).WithUnloadFunc(func(key int, value int) {
+		atomic.AddInt32(&unloadCount, 1)
+	}).Build()
+	for i := 0; i < 100; i++ {
+		m.Set(i, i*10)
+	}
+	assert.Equal(t, 50, m.Size())
+	assert.Equal(t, 0, int(buildCount))
+	time.Sleep(time.Millisecond * 100)
+	assert.Equal(t, 50, int(unloadCount))
+	assert.Equal(t, 50, m.Size())
+}
+
+func TestGuavaMap_GetAndDelete(t *testing.T) {
+	unload := int32(0)
+	load := int32(0)
+	g := NewGuavaMap[int, int]().WithMaxCount(100).WithLoadFunc(func(key int) (int, error) {
+		atomic.AddInt32(&load, 1)
+		return key * 10, nil
+	}).WithUnloadFunc(func(k int, v int) {
+		atomic.AddInt32(&unload, 1)
+	}).Build()
+	wg := sync.WaitGroup{}
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(_i int) {
+			v, err := g.Get(_i)
+			assert.Nil(t, err)
+			assert.Equal(t, _i*10, v)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	time.Sleep(time.Millisecond * 10)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(_i int) {
+			g.Delete(_i)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	time.Sleep(time.Millisecond * 100)
+	assert.Equal(t, 0, g.Size())
+	assert.Equal(t, 100, int(load))
+	assert.Equal(t, 100, int(unload))
 }
 
 func TestGuavaMap_GetWithWriteTimeout(t *testing.T) {
-	buildCount := 0
-	unloadCount := 0
-	m := NewGuavaMap[int, int]().WithMaxCount(10).WithLoadFunc(func(key int) (int, error) {
-		buildCount++
+	buildCount := int32(0)
+	unloadCount := int32(0)
+	m := NewGuavaMap[int, int]().WithMaxCount(100).WithLoadFunc(func(key int) (int, error) {
+		atomic.AddInt32(&buildCount, 1)
 		return key * 10, nil
 	}).WithUnloadFunc(func(key int, value int) {
-		unloadCount++
+		atomic.AddInt32(&unloadCount, 1)
 	}).
 		WithWriteTimeout(time.Millisecond * 20).
-		WithClearTimeout(time.Millisecond * 10).
 		Build()
 	for i := 0; i < 100; i++ {
 		v, err := m.Get(i)
 		assert.Nil(t, err)
 		assert.Equal(t, i*10, v)
 	}
-	assert.Equal(t, 50, m.Size())
-	assert.Equal(t, 100, buildCount)
-	time.Sleep(time.Millisecond * 1000)
-	assert.Equal(t, 100, unloadCount)
+	assert.Equal(t, 100, m.Size())
+	assert.Equal(t, 100, int(buildCount))
+	time.Sleep(time.Millisecond * 100)
 	assert.Equal(t, 0, m.Size())
+	assert.Equal(t, 100, int(unloadCount))
+}
+
+func TestGuavaMapBuilder_WithReadTimeout(t *testing.T) {
+	buildCount := int32(0)
+	unloadCount := int32(0)
+	m := NewGuavaMap[int, int]().WithMaxCount(100).WithLoadFunc(func(key int) (int, error) {
+		atomic.AddInt32(&buildCount, 1)
+		return key * 10, nil
+	}).WithUnloadFunc(func(key int, value int) {
+		atomic.AddInt32(&unloadCount, 1)
+	}).
+		WithReadTimeout(time.Millisecond * 20).
+		Build()
+	for i := 0; i < 100; i++ {
+		v, err := m.Get(i)
+		assert.Nil(t, err)
+		assert.Equal(t, i*10, v)
+	}
+	assert.Equal(t, 100, m.Size())
+	assert.Equal(t, 100, int(buildCount))
+
+	for j := 0; j < 5; j++ {
+		time.Sleep(time.Millisecond * 10)
+		for i := 0; i < 50; i++ {
+			v, err := m.Get(i)
+			assert.Nil(t, err)
+			assert.Equal(t, i*10, v)
+		}
+	}
+	assert.Equal(t, 100, int(buildCount))
+	assert.Equal(t, 50, int(unloadCount))
+	assert.Equal(t, 50, m.Size())
+	time.Sleep(time.Millisecond * 300)
+	assert.Equal(t, 0, m.Size())
+	assert.Equal(t, 100, int(unloadCount))
 
 }
 

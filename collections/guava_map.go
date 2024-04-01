@@ -22,47 +22,77 @@ type timeoutHolder[K comparable] struct {
 	time time.Time
 }
 
+type guavaHolder[V any] struct {
+	timer    *time.Timer
+	cancelFn context.CancelFunc
+	v        V
+}
+
 type GuavaMap[K comparable, V any] struct {
-	stored             map[K]V
+	stored             map[K]*guavaHolder[V]
 	storedSlice        []K
+	updateLockMap      map[K]*sync.Mutex
+	updateLockMapMu    sync.RWMutex
 	mu                 sync.RWMutex
 	maxCount           int
 	loadFunc           GuavaLoadFunc[K, V]
 	unloadFunc         GuavaUnloadFunc[K, V]
 	enableWriteTimeout bool
 	writeTimeout       time.Duration
-	timeoutSlices      []*timeoutHolder[K]
-	timeoutMu          sync.Mutex
-	clearTimeout       time.Duration
+	readTimeout        time.Duration
 	lockLoad           *MapMutex[K]
 	ctx                context.Context
 }
 
-func (m *GuavaMap[K, V]) timeoutThreadFunction() {
-	for {
-		select {
-		case <-m.ctx.Done():
-			return
-		case <-time.After(m.clearTimeout):
-			m.timeoutMu.Lock()
-			deleteList := make([]K, 0)
-			for len(m.timeoutSlices) > 0 && time.Since(m.timeoutSlices[0].time) >= m.writeTimeout {
-				key := m.timeoutSlices[0].key
-				m.timeoutSlices = m.timeoutSlices[1:]
-				deleteList = append(deleteList, key)
-			}
-			m.timeoutMu.Unlock()
-			for _, key := range deleteList {
-				m.Delete(key)
-			}
-		}
+func (m *GuavaMap[K, V]) getKeyLock(key K) *sync.Mutex {
+	m.updateLockMapMu.Lock()
+	defer m.updateLockMapMu.Unlock()
+	lock, ok := m.updateLockMap[key]
+	if !ok {
+		lock = &sync.Mutex{}
+		m.updateLockMap[key] = lock
 	}
+	return lock
+}
+
+func (m *GuavaMap[K, V]) createHolder(key K, value V) *guavaHolder[V] {
+	res := &guavaHolder[V]{
+		v: value,
+	}
+	if m.readTimeout > 0 || m.writeTimeout > 0 {
+		ctx, cancelFn := context.WithCancel(m.ctx)
+		res.cancelFn = cancelFn
+		if m.writeTimeout > 0 {
+			res.timer = time.NewTimer(m.writeTimeout)
+		} else {
+			res.timer = time.NewTimer(m.readTimeout)
+		}
+		go func() {
+			defer res.timer.Stop()
+			select {
+			case <-ctx.Done():
+				return
+			case <-res.timer.C:
+				m.mu.Lock()
+				m.safeDelete(key)
+				m.mu.Unlock()
+
+			}
+		}()
+
+	}
+	return res
 }
 
 func (m *GuavaMap[K, V]) Has(key K) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	_, ok := m.stored[key]
+	v, ok := m.stored[key]
+	if ok {
+		if v.timer != nil && m.readTimeout > 0 {
+			v.timer.Reset(m.readTimeout)
+		}
+	}
 	return ok
 }
 
@@ -71,18 +101,31 @@ func (m *GuavaMap[K, V]) HasOrCreate(key K, value V) bool {
 	defer m.mu.Unlock()
 	_, ok := m.stored[key]
 	if !ok {
-		m.stored[key] = value
+		m.stored[key] = m.createHolder(key, value)
+	} else {
+		if m.stored[key].timer != nil && m.readTimeout > 0 {
+			m.stored[key].timer.Reset(m.readTimeout)
+		}
 	}
 	return ok
 }
 
-func (m *GuavaMap[K, V]) Delete(key K) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (m *GuavaMap[K, V]) safeDelete(key K) {
 	if m.unloadFunc != nil {
-		go m.unloadFunc(key, m.stored[key])
+		v := m.stored[key].v
+		go m.unloadFunc(key, v)
 	}
+	if m.readTimeout > 0 || m.writeTimeout > 0 {
+		v := m.stored[key]
+		if v.cancelFn != nil {
+			v.cancelFn()
+		}
+	}
+
 	delete(m.stored, key)
+	m.updateLockMapMu.Lock()
+	delete(m.updateLockMap, key)
+	m.updateLockMapMu.Unlock()
 	if m.maxCount > 0 {
 		for i, k := range m.storedSlice {
 			if k == key {
@@ -91,16 +134,52 @@ func (m *GuavaMap[K, V]) Delete(key K) {
 			}
 		}
 	}
-	if m.enableWriteTimeout {
-		m.timeoutMu.Lock()
-		for i, k := range m.timeoutSlices {
-			if k.key == key {
-				m.timeoutSlices = append(m.timeoutSlices[:i], m.timeoutSlices[i+1:]...)
-				break
-			}
+
+	if m.updateLockMap != nil {
+		m.updateLockMapMu.RLock()
+		_, ok := m.updateLockMap[key]
+		m.updateLockMapMu.RUnlock()
+		if ok {
+			m.updateLockMapMu.Lock()
+			delete(m.updateLockMap, key)
+			m.updateLockMapMu.Unlock()
 		}
-		m.timeoutMu.Unlock()
 	}
+}
+
+func (m *GuavaMap[K, V]) LockForUpdate(key K, update func() V) V {
+	if m.updateLockMap == nil {
+		m.updateLockMapMu.Lock()
+		if m.updateLockMap == nil {
+			m.updateLockMap = make(map[K]*sync.Mutex)
+		}
+		m.updateLockMapMu.Unlock()
+	}
+	m.updateLockMapMu.RLock()
+	lock, ok := m.updateLockMap[key]
+	m.updateLockMapMu.RUnlock()
+	if !ok {
+		m.updateLockMapMu.Lock()
+		lock, ok = m.updateLockMap[key]
+		if !ok {
+			lock = &sync.Mutex{}
+			m.updateLockMap[key] = lock
+		}
+		m.updateLockMapMu.Unlock()
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	res := update()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stored[key] = m.createHolder(key, res)
+	return res
+}
+
+func (m *GuavaMap[K, V]) Delete(key K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.safeDelete(key)
 }
 
 func (m *GuavaMap[K, V]) Clear() {
@@ -108,19 +187,21 @@ func (m *GuavaMap[K, V]) Clear() {
 	defer m.mu.Unlock()
 	if m.unloadFunc != nil {
 		for k, v := range m.stored {
-			go m.unloadFunc(k, v)
+			go m.unloadFunc(k, v.v)
+			if v.cancelFn != nil {
+				v.cancelFn()
+			}
 		}
 	}
-	m.stored = make(map[K]V)
+	m.stored = make(map[K]*guavaHolder[V])
 	if m.maxCount > 0 {
 		m.storedSlice = make([]K, 0, m.maxCount)
 	}
-	if m.enableWriteTimeout {
-		m.timeoutMu.Lock()
-		defer m.timeoutMu.Unlock()
-		m.timeoutSlices = make([]*timeoutHolder[K], 0)
+	if m.updateLockMap != nil {
+		m.updateLockMapMu.Lock()
+		defer m.updateLockMapMu.Unlock()
+		m.updateLockMap = make(map[K]*sync.Mutex)
 	}
-
 }
 
 func (m *GuavaMap[K, V]) Size() int {
@@ -134,10 +215,14 @@ func (m *GuavaMap[K, V]) Get(key K) (V, error) {
 	val, ok := m.stored[key]
 	m.mu.RUnlock()
 	if ok {
-		return val, nil
+		if val.timer != nil && m.readTimeout > 0 {
+			val.timer.Reset(m.readTimeout)
+		}
+		return val.v, nil
 	}
 	if m.loadFunc == nil {
-		return val, nil
+		var v V
+		return v, nil
 	}
 	var err error
 	var loadedVal V
@@ -153,83 +238,68 @@ func (m *GuavaMap[K, V]) Get(key K) (V, error) {
 	}
 
 	if err != nil {
-		return val, err
+		var v V
+		return v, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	val, ok = m.stored[key]
 	if ok {
-		return val, nil
+		if val.timer != nil && m.readTimeout > 0 {
+			val.timer.Reset(m.readTimeout)
+		}
+		return val.v, nil
 	}
 	if m.maxCount > 0 {
 		if len(m.storedSlice) >= m.maxCount {
-			if m.unloadFunc != nil {
-				go m.unloadFunc(m.storedSlice[0], m.stored[m.storedSlice[0]])
-			}
-			delete(m.stored, m.storedSlice[0])
-			m.storedSlice = m.storedSlice[1:]
-			if m.enableWriteTimeout {
-				m.timeoutMu.Lock()
-				m.timeoutSlices = m.timeoutSlices[1:]
-				m.timeoutMu.Unlock()
-			}
+			m.safeDelete(m.storedSlice[0])
 		}
 		m.storedSlice = append(m.storedSlice, key)
 	}
-	if m.enableWriteTimeout {
-		m.timeoutMu.Lock()
-		m.timeoutSlices = append(m.timeoutSlices, &timeoutHolder[K]{key: key, time: time.Now()})
-		m.timeoutMu.Unlock()
-	}
-	m.stored[key] = loadedVal
+	m.stored[key] = m.createHolder(key, loadedVal)
 	return loadedVal, nil
 }
 
 func (m *GuavaMap[K, V]) Set(key K, val V) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.stored[key]
-	m.stored[key] = val
-	if ok {
-		return
-	}
-	if m.maxCount > 0 {
-		if len(m.storedSlice) >= m.maxCount {
-			if m.unloadFunc != nil {
-				go m.unloadFunc(m.storedSlice[0], m.stored[m.storedSlice[0]])
+	v, ok := m.stored[key]
+	if !ok {
+		m.stored[key] = m.createHolder(key, val)
+		if m.maxCount > 0 {
+			if len(m.storedSlice) >= m.maxCount {
+				m.safeDelete(m.storedSlice[0])
 			}
-			delete(m.stored, m.storedSlice[0])
-			m.storedSlice = m.storedSlice[1:]
-			if m.enableWriteTimeout {
-				m.timeoutMu.Lock()
-				m.timeoutSlices = m.timeoutSlices[1:]
-				m.timeoutMu.Unlock()
+			m.storedSlice = append(m.storedSlice, key)
+		}
+		return
+	} else {
+		if v.timer != nil {
+			if m.writeTimeout > 0 {
+				v.timer.Reset(m.writeTimeout)
+			} else {
+				v.timer.Reset(m.readTimeout)
 			}
 		}
-		m.storedSlice = append(m.storedSlice, key)
+		v.v = val
+		return
 	}
-	if m.enableWriteTimeout {
-		m.timeoutMu.Lock()
-		m.timeoutSlices = append(m.timeoutSlices, &timeoutHolder[K]{key: key, time: time.Now()})
-		m.timeoutMu.Unlock()
-	}
+
 }
 
 type GuavaMapBuilder[K comparable, V any] struct {
-	loadFunc           GuavaLoadFunc[K, V]
-	lockLoad           bool
-	maxCount           int
-	unloadFunc         GuavaUnloadFunc[K, V]
-	writeTimeout       time.Duration
-	enableWriteTimeout bool
-	ctx                context.Context
-	clearTimeout       time.Duration
+	loadFunc     GuavaLoadFunc[K, V]
+	lockLoad     bool
+	maxCount     int
+	unloadFunc   GuavaUnloadFunc[K, V]
+	writeTimeout time.Duration
+	readTimeout  time.Duration
+	ctx          context.Context
 }
 
 func NewGuavaMap[K comparable, V any]() *GuavaMapBuilder[K, V] {
 	return &GuavaMapBuilder[K, V]{
-		ctx:          context.Background(),
-		clearTimeout: time.Second * 5,
+		ctx: context.Background(),
 	}
 }
 
@@ -240,11 +310,6 @@ func (b *GuavaMapBuilder[K, V]) WithContext(ctx context.Context) *GuavaMapBuilde
 
 func (b *GuavaMapBuilder[K, V]) WithLockLoad(lockLoad bool) *GuavaMapBuilder[K, V] {
 	b.lockLoad = lockLoad
-	return b
-}
-
-func (b *GuavaMapBuilder[K, V]) WithClearTimeout(clearTimeout time.Duration) *GuavaMapBuilder[K, V] {
-	b.clearTimeout = clearTimeout
 	return b
 }
 
@@ -265,28 +330,29 @@ func (b *GuavaMapBuilder[K, V]) WithUnloadFunc(unloadFunc GuavaUnloadFunc[K, V])
 
 func (b *GuavaMapBuilder[K, V]) WithWriteTimeout(writeTimeout time.Duration) *GuavaMapBuilder[K, V] {
 	b.writeTimeout = writeTimeout
-	b.enableWriteTimeout = b.writeTimeout > 0
+	return b
+}
+
+func (b *GuavaMapBuilder[K, V]) WithReadTimeout(readTimeout time.Duration) *GuavaMapBuilder[K, V] {
+	b.readTimeout = readTimeout
 	return b
 }
 
 func (b *GuavaMapBuilder[K, V]) Build() *GuavaMap[K, V] {
 	res := &GuavaMap[K, V]{
-		stored:             make(map[K]V),
-		loadFunc:           b.loadFunc,
-		maxCount:           b.maxCount,
-		unloadFunc:         b.unloadFunc,
-		writeTimeout:       b.writeTimeout,
-		enableWriteTimeout: b.enableWriteTimeout,
-		ctx:                b.ctx,
+		stored:       make(map[K]*guavaHolder[V]),
+		loadFunc:     b.loadFunc,
+		maxCount:     b.maxCount,
+		unloadFunc:   b.unloadFunc,
+		writeTimeout: b.writeTimeout,
+		readTimeout:  b.readTimeout,
+		ctx:          b.ctx,
 	}
 	if b.lockLoad {
 		res.lockLoad = NewMapMutex[K]()
 	}
 	if b.maxCount > 0 {
 		res.storedSlice = make([]K, 0, b.maxCount)
-	}
-	if b.enableWriteTimeout {
-		go res.timeoutThreadFunction()
 	}
 	return res
 }
