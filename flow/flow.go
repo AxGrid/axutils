@@ -40,7 +40,7 @@ func (rb *FlowProcessorRouterBuilder[E, S]) Do(do func(event E, state S) error) 
 	return rb
 }
 
-func (rb *FlowProcessorRouterBuilder[E, S]) Build() {
+func (rb *FlowProcessorRouterBuilder[E, S]) build() {
 	route := FlowProcessorRouter[E, S]{
 		chain: rb.chain,
 	}
@@ -52,13 +52,14 @@ func (fb *FlowProcessorBuilder[E, S]) Route(rb func(r *FlowProcessorRouterBuilde
 		parent: fb,
 	}
 	rb(b)
+	b.build()
 	return fb
 }
 
 func (fb *FlowProcessorBuilder[E, S]) RouteOn(cond func(event E) bool, do ...func(event E, state S) error) *FlowProcessorBuilder[E, S] {
 	fb.Route(func(rb *FlowProcessorRouterBuilder[E, S]) {
 		for _, fn := range do {
-			rb.OnEvent(cond).Do(fn).Build()
+			rb.OnEvent(cond).Do(fn)
 		}
 	})
 	return fb

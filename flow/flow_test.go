@@ -16,7 +16,7 @@ func TestNewFlow_Success(t *testing.T) {
 			}).Do(func(event string, state *int) error {
 				*state = *state + 1
 				return nil
-			}).Build()
+			})
 		}).
 		RouteOn(func(event string) bool {
 			if event == "test" {
