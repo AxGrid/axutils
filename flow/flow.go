@@ -1,4 +1,4 @@
-package flow2
+package flow
 
 import "github.com/go-errors/errors"
 

@@ -1,4 +1,4 @@
-package flow2
+package flow
 
 import (
 	"github.com/stretchr/testify/assert"
