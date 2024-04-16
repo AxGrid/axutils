@@ -124,11 +124,13 @@ func (b *ChunkChanBuilder[T]) Build() *ChunkChan[T] {
 	go res.run()
 	if b.chunkFunc != nil {
 		go func() {
-			select {
-			case <-b.ctx.Done():
-				return
-			case chunk := <-res.outgoingChan:
-				b.chunkFunc(chunk)
+			for {
+				select {
+				case <-b.ctx.Done():
+					return
+				case chunk := <-res.outgoingChan:
+					b.chunkFunc(chunk)
+				}
 			}
 		}()
 	}
