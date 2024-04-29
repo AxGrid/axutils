@@ -79,7 +79,6 @@ func (m *GuavaMap[K, V]) createHolder(key K, value V) *guavaHolder[V] {
 
 			}
 		}()
-
 	}
 	return res
 }
@@ -102,6 +101,12 @@ func (m *GuavaMap[K, V]) HasOrCreate(key K, value V) bool {
 	_, ok := m.stored[key]
 	if !ok {
 		m.stored[key] = m.createHolder(key, value)
+		if m.maxCount > 0 {
+			if len(m.storedSlice) >= m.maxCount {
+				m.safeDelete(m.storedSlice[0])
+			}
+		}
+		m.storedSlice = append(m.storedSlice, key)
 	} else {
 		if m.stored[key].timer != nil && m.readTimeout > 0 {
 			m.stored[key].timer.Reset(m.readTimeout)

@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
@@ -267,4 +268,13 @@ func BenchmarkGuavaMap_LockLoad(b *testing.B) {
 		}
 	}
 	println("loadCount", loadCount)
+}
+
+func TestGuavaMap_HasOrCreate(t *testing.T) {
+	m := NewGuavaMap[string, bool]().WithMaxCount(1000).Build()
+	for i := 0; i < 10000; i++ {
+		v := m.HasOrCreate(fmt.Sprintf("key-%d", i), true)
+		assert.False(t, v)
+	}
+	assert.Equal(t, 1000, m.Size())
 }

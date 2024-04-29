@@ -10,12 +10,13 @@ import "sync"
 zed (11.04.2024)
 */
 
-type Map interface {
-	Get(key string) (interface{}, bool)
-	Set(key string, value interface{})
-	Delete(key string)
-	Has(key string) bool
-	SetIfNotExists(key string, value interface{}) bool
+type Map[K comparable, V any] interface {
+	Get(key K) (V, bool)
+	Set(key K, value V)
+	Delete(key K)
+	Has(key K) bool
+	SetIfNotExists(key K, value V) bool
+	SetIfNotExistsWithFunc(key K, fn func() V) (V, bool)
 	Size() int
 }
 
@@ -64,6 +65,17 @@ func (m *SimpleMap[K, V]) SetIfNotExists(key K, value V) bool {
 	}
 	m.m[key] = value
 	return true
+}
+
+func (m *SimpleMap[K, V]) SetIfNotExistsWithFunc(key K, fn func() V) (V, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if v, ok := m.m[key]; ok {
+		return v, false
+	}
+	v := fn()
+	m.m[key] = v
+	return v, true
 }
 
 func (m *SimpleMap[K, V]) Size() int {

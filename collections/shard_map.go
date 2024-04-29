@@ -58,6 +58,18 @@ func (m *ShardMap[K, V]) SetIfNotExists(key K, value V) bool {
 	return true
 }
 
+func (m *ShardMap[K, V]) SetIfNotExistsWithFunc(key K, fn func() V) (V, bool) {
+	shard := m.shardsFunc(key)
+	m.shardsLock[shard].Lock()
+	defer m.shardsLock[shard].Unlock()
+	if v, ok := m.shards[shard][key]; ok {
+		return v, false
+	}
+	v := fn()
+	m.shards[shard][key] = v
+	return v, true
+}
+
 func (m *ShardMap[K, V]) Clear() {
 	for i := 0; i < m.shardsCount; i++ {
 		m.shardsLock[i].Lock()
