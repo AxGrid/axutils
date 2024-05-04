@@ -278,3 +278,32 @@ func TestGuavaMap_HasOrCreate(t *testing.T) {
 	}
 	assert.Equal(t, 1000, m.Size())
 }
+
+func TestGuavaMap_LoadWithError(t *testing.T) {
+	buildCount := 0
+	m := NewGuavaMap[int, int]().WithMaxCount(10).WithLoadFunc(func(key int) (int, error) {
+		if key%2 == 0 {
+			return 0, fmt.Errorf("odd-error")
+		}
+		buildCount++
+		return key * 10, nil
+	}).Build()
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			v, err := m.Get(i)
+			if i%2 == 0 {
+				assert.NotNil(t, err)
+				assert.Equal(t, 0, v)
+			} else {
+				assert.Nil(t, err)
+				assert.Equal(t, i*10, v)
+			}
+		}(i)
+	}
+	wg.Wait()
+	assert.Equal(t, 10, m.Size())
+}

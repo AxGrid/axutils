@@ -1,6 +1,6 @@
 module github.com/axgrid/axutils
 
-go 1.20
+go 1.21
 
 require (
 	github.com/go-errors/errors v1.5.1
