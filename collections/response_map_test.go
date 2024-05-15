@@ -2,6 +2,8 @@ package collections
 
 import (
 	"github.com/stretchr/testify/assert"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -11,98 +13,90 @@ type mockResponse struct {
 	err  error
 }
 
-//func TestResponseMap_Wait(t *testing.T) {
-//	m := NewResponseMap[uint64, *mockResponse](1)
-//
-//	go func() {
-//		time.Sleep(2 * time.Second)
-//		m.Set(1, &mockResponse{data: []byte("1")})
-//	}()
-//
-//	res := m.Wait(1)
-//	assert.Equal(t, []byte("1"), res.data)
-//	assert.Nil(t, res.err)
-//}
-//
-//func TestResponseMap_Wait_Timeout(t *testing.T) {
-//	m := NewResponseMap[uint64, *mockResponse](1)
-//
-//	go func() {
-//		time.Sleep(3 * time.Second)
-//		m.Set(1, &mockResponse{data: []byte("1")})
-//	}()
-//
-//	res := m.Wait(1)
-//	assert.Nil(t, res)
-//}
-
 func TestResponseMap_Wait(t *testing.T) {
-	m := NewResponseMap[uint64, *mockResponse]().Build()
-
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(300).Build()
+	k := "key"
+	res := []byte("ok")
 	go func() {
-		time.Sleep(2 * time.Second)
-		m.Set(1, &mockResponse{data: []byte("1")})
+		v := m.Wait(k)
+		assert.Nil(t, v.err)
+		assert.Equal(t, v.data, res)
 	}()
-
-	res := m.Wait(1)
-	assert.Equal(t, []byte("1"), res.data)
-	assert.Nil(t, res.err)
+	time.Sleep(1 * time.Second)
+	m.Set(k, &mockResponse{data: res})
+	time.Sleep(1 * time.Second)
 }
 
-func TestResponseMap_Wait_Timeout(t *testing.T) {
-	m := NewResponseMap[uint64, *mockResponse]().WithTimeout(1).Build()
+func TestResponseMap_WaitTimeout(t *testing.T) {
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(2).Build()
+	k := "key"
 
-	go func() {
-		time.Sleep(3 * time.Second)
-		m.Set(1, &mockResponse{data: []byte("1")})
-	}()
-
-	res := m.Wait(1)
-	assert.Nil(t, res)
+	v := m.Wait(k)
+	assert.Nil(t, v)
 }
 
-func TestResponseMap_Wait_Multiple_Keys(t *testing.T) {
-	m := NewResponseMap[uint64, *mockResponse]().Build()
+func TestResponseMap_WaitMultiple(t *testing.T) {
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(300).Build()
+	k := "key"
+	res := []byte("ok")
 
-	go func() {
-		time.Sleep(2 * time.Second)
-		assert.Equal(t, 100, len(m.m[1].chans))
-	}()
-
-	go func() {
-		time.Sleep(3 * time.Second)
-		m.Set(1, &mockResponse{data: []byte("1")})
-	}()
-
-	for i := 0; i < 100; i++ {
+	wg := sync.WaitGroup{}
+	var shouldResps, resps uint64 = 100000, 0
+	for i := 0; i < int(shouldResps); i++ {
+		wg.Add(1)
 		go func() {
-			res := m.Wait(1)
-			assert.NotNil(t, res)
-			assert.Equal(t, []byte("1"), res.data)
-			assert.Nil(t, res.err)
+			defer wg.Done()
+			v := m.Wait(k)
+			assert.Nil(t, v.err)
+			assert.Equal(t, v.data, res)
+			atomic.AddUint64(&resps, 1)
 		}()
 	}
-
-	time.Sleep(5 * time.Second)
-}
-
-func TestResponseMap_Wait_Multiple_Keys_Timeout(t *testing.T) {
-	m := NewResponseMap[uint64, *mockResponse]().WithTimeout(1).Build()
-
-	go func() {
-		time.Sleep(3 * time.Second)
-		m.Set(1, &mockResponse{data: []byte("1")})
-	}()
-
-	shouldResps := 100
-	resps := 0
-	for i := 0; i < shouldResps; i++ {
-		go func() {
-			res := m.Wait(1)
-			assert.Nil(t, res)
-			resps++
-		}()
-	}
-	time.Sleep(4 * time.Second)
+	time.Sleep(1 * time.Second)
+	m.Set(k, &mockResponse{data: res})
+	wg.Wait()
 	assert.Equal(t, shouldResps, resps)
+}
+
+func TestResponseMap_WaitMultipleTimeout(t *testing.T) {
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(2).Build()
+	k := "key"
+
+	wg := sync.WaitGroup{}
+	var shouldResps, resps uint64 = 100000, 0
+	for i := 0; i < int(shouldResps); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v := m.Wait(k)
+			assert.Nil(t, v)
+			atomic.AddUint64(&resps, 1)
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, shouldResps, resps)
+}
+
+func TestResponseMap_Set(t *testing.T) {
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(300).Build()
+	k := "key"
+	res := []byte("ok")
+
+	m.Set(k, &mockResponse{data: res})
+
+	v := m.Wait(k)
+	assert.NotNil(t, v)
+	assert.Nil(t, v.err)
+	assert.Equal(t, res, v.data)
+}
+
+func TestResponseMap_SetTimeout(t *testing.T) {
+	timeout := 1
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(timeout).Build()
+	k := "key"
+	res := []byte("ok")
+
+	m.Set(k, &mockResponse{data: res})
+	time.Sleep(time.Duration(timeout*2) * time.Second)
+	assert.Equal(t, 0, len(m.m))
 }

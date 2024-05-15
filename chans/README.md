@@ -3,7 +3,7 @@ CHANS
 
 Подключение
 ```go
-import "github.com/axgrid/axutils/chans"
+import "github.com/axgrid/axutils/listeners"
 ```
 
 

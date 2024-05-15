@@ -44,23 +44,56 @@ type ResponseMap[K comparable, V any] struct {
 }
 
 type chansHolder[V any] struct {
-	t     *time.Timer
-	chans []chan V
+	t         *time.Timer
+	mu        sync.RWMutex
+	writer    chan V
+	listeners []chan V
+}
+
+func (h *chansHolder[V]) addListener(listener chan V) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.listeners = append(h.listeners, listener)
 }
 
 func (r *ResponseMap[K, V]) Set(key K, value V) {
 	r.mu.RLock()
 	holder, ok := r.m[key]
 	r.mu.RUnlock()
-	if !ok {
+	if ok {
+		for _, ch := range holder.listeners {
+			ch <- value
+		}
+		r.mu.Lock()
+		delete(r.m, key)
+		r.mu.Unlock()
 		return
 	}
-	for _, ch := range holder.chans {
-		ch <- value
+	holder = &chansHolder[V]{
+		t:      time.NewTimer(time.Duration(r.timeout) * time.Second),
+		mu:     sync.RWMutex{},
+		writer: make(chan V, 1),
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.m, key)
+	go func() {
+		defer holder.t.Stop()
+		for {
+			select {
+			case <-holder.t.C:
+				holder.mu.Lock()
+				for _, ch := range holder.listeners {
+					close(ch)
+				}
+				r.mu.Lock()
+				delete(r.m, key)
+				r.mu.Unlock()
+				holder.mu.Unlock()
+			}
+		}
+	}()
+	holder.writer <- value
+	holder.mu.Lock()
+	r.m[key] = holder
+	holder.mu.Unlock()
 }
 
 func (r *ResponseMap[K, V]) Wait(key K) V {
@@ -68,42 +101,114 @@ func (r *ResponseMap[K, V]) Wait(key K) V {
 }
 
 func (r *ResponseMap[K, V]) getChan(key K) chan V {
-	ch := make(chan V)
 	r.mu.RLock()
 	holder, ok := r.m[key]
 	r.mu.RUnlock()
 	if ok {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		holder.chans = append(r.m[key].chans, ch)
-		r.m[key] = holder
+		ch := make(chan V, 1)
+		if holder.listeners == nil {
+			msg := <-holder.writer
+			ch <- msg
+			return ch
+		}
+		holder.addListener(ch)
 		return ch
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	holder, ok = r.m[key]
 	if ok {
-		holder.chans = append(r.m[key].chans, ch)
-		r.m[key] = holder
+		ch := make(chan V, 1)
+		if holder.listeners == nil {
+			msg := <-holder.writer
+			ch <- msg
+			return ch
+		}
+		holder.addListener(ch)
 		return ch
 	}
 	holder = &chansHolder[V]{
-		t:     time.NewTimer(time.Duration(r.timeout) * time.Second),
-		chans: make([]chan V, 0),
+		t:  time.NewTimer(time.Duration(r.timeout) * time.Second),
+		mu: sync.RWMutex{},
 	}
-	holder.chans = append(holder.chans, ch)
-	r.m[key] = holder
 	go func() {
 		defer holder.t.Stop()
-		select {
-		case <-holder.t.C:
-			for _, ch := range holder.chans {
-				close(ch)
+		for {
+			select {
+			case <-holder.t.C:
+				holder.mu.Lock()
+				for _, ch := range holder.listeners {
+					close(ch)
+				}
+				r.mu.Lock()
+				delete(r.m, key)
+				r.mu.Unlock()
+				holder.mu.Unlock()
 			}
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			delete(r.m, key)
 		}
 	}()
+	ch := make(chan V, 1)
+	holder.addListener(ch)
+	r.m[key] = holder
 	return ch
 }
+
+//func (r *ResponseMap[K, V]) Set(key K, value V) {
+//	r.mu.RLock()
+//	holder, ok := r.m[key]
+//	r.mu.RUnlock()
+//	if !ok {
+//		return
+//	}
+//	for _, ch := range holder.listeners {
+//		ch <- value
+//	}
+//	r.mu.Lock()
+//	defer r.mu.Unlock()
+//	delete(r.m, key)
+//}
+//
+//func (r *ResponseMap[K, V]) Wait(key K) V {
+//	return <-r.getChan(key)
+//}
+//
+//func (r *ResponseMap[K, V]) getChan(key K) chan V {
+//	ch := make(chan V)
+//	r.mu.RLock()
+//	holder, ok := r.m[key]
+//	r.mu.RUnlock()
+//	if ok {
+//		r.mu.Lock()
+//		defer r.mu.Unlock()
+//		holder.listeners = append(r.m[key].listeners, ch)
+//		r.m[key] = holder
+//		return ch
+//	}
+//	r.mu.Lock()
+//	defer r.mu.Unlock()
+//	holder, ok = r.m[key]
+//	if ok {
+//		holder.listeners = append(r.m[key].listeners, ch)
+//		r.m[key] = holder
+//		return ch
+//	}
+//	holder = &chansHolder[V]{
+//		t:         time.NewTimer(time.Duration(r.timeout) * time.Second),
+//		listeners: make([]chan V, 0),
+//	}
+//	holder.listeners = append(holder.listeners, ch)
+//	r.m[key] = holder
+//	go func() {
+//		defer holder.t.Stop()
+//		select {
+//		case <-holder.t.C:
+//			for _, ch := range holder.listeners {
+//				close(ch)
+//			}
+//			r.mu.Lock()
+//			defer r.mu.Unlock()
+//			delete(r.m, key)
+//		}
+//	}()
+//	return ch
+//}
