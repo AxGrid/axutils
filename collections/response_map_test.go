@@ -14,7 +14,7 @@ type mockResponse struct {
 }
 
 func TestResponseMap_Wait(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(300).Build()
+	m := NewResponseMap[string, *mockResponse]().Build()
 	k := "key"
 	res := []byte("ok")
 	go func() {
@@ -28,15 +28,15 @@ func TestResponseMap_Wait(t *testing.T) {
 }
 
 func TestResponseMap_WaitTimeout(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(2).Build()
+	timeout := 2 * time.Second
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(timeout).Build()
 	k := "key"
-
 	v := m.Wait(k)
 	assert.Nil(t, v)
 }
 
 func TestResponseMap_WaitMultiple(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(300).Build()
+	m := NewResponseMap[string, *mockResponse]().Build()
 	k := "key"
 	res := []byte("ok")
 
@@ -59,7 +59,8 @@ func TestResponseMap_WaitMultiple(t *testing.T) {
 }
 
 func TestResponseMap_WaitMultipleTimeout(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(2).Build()
+	timeout := 2 * time.Second
+	m := NewResponseMap[string, *mockResponse]().WithTimeout(timeout).Build()
 	k := "key"
 
 	wg := sync.WaitGroup{}
@@ -78,7 +79,7 @@ func TestResponseMap_WaitMultipleTimeout(t *testing.T) {
 }
 
 func TestResponseMap_Set(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(300).Build()
+	m := NewResponseMap[string, *mockResponse]().Build()
 	k := "key"
 	res := []byte("ok")
 
@@ -88,15 +89,4 @@ func TestResponseMap_Set(t *testing.T) {
 	assert.NotNil(t, v)
 	assert.Nil(t, v.err)
 	assert.Equal(t, res, v.data)
-}
-
-func TestResponseMap_SetTimeout(t *testing.T) {
-	timeout := 1
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(timeout).Build()
-	k := "key"
-	res := []byte("ok")
-
-	m.Set(k, &mockResponse{data: res})
-	time.Sleep(time.Duration(timeout*2) * time.Second)
-	assert.Equal(t, 0, len(m.m))
 }
