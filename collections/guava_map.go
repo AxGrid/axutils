@@ -95,6 +95,7 @@ func (m *GuavaMap[K, V]) Has(key K) bool {
 	return ok
 }
 
+// HasOrCreate checks if the key exists in the map, if not, it creates a new entry with the provided value and returns false
 func (m *GuavaMap[K, V]) HasOrCreate(key K, value V) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -128,9 +129,9 @@ func (m *GuavaMap[K, V]) safeDelete(key K) {
 	}
 
 	delete(m.stored, key)
-	m.updateLockMapMu.Lock()
-	delete(m.updateLockMap, key)
-	m.updateLockMapMu.Unlock()
+	//m.updateLockMapMu.Lock()
+	//delete(m.updateLockMap, key)
+	//m.updateLockMapMu.Unlock()
 	if m.maxCount > 0 {
 		for i, k := range m.storedSlice {
 			if k == key {

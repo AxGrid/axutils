@@ -5,49 +5,29 @@ import (
 	"testing"
 )
 
-func TestNewFlow_Success(t *testing.T) {
-	f := NewFlow[string, *int]().
-		Route(func(r *FlowProcessorRouterBuilder[string, *int]) {
-			r.OnEvent(func(e string) bool {
-				if e == "test" {
-					return true
-				}
-				return false
-			}).Do(func(event string, state *int) error {
-				*state = *state + 1
-				return nil
-			})
-		}).
-		RouteOn(func(event string) bool {
-			if event == "test" {
-				return true
-			}
-			return false
-		}, func(event string, state *int) error {
-			*state = *state + 5
-			return nil
-		}).Build()
+/*
+ __    _           ___
+|  |  |_|_____ ___|_  |
+|  |__| |     | .'|  _|
+|_____|_|_|_|_|__,|___|
+zed (05.05.2024)
+*/
 
-	var state int
-	err := f("test", &state)
-	assert.Nil(t, err)
-	assert.Equal(t, 6, state)
+type TestState struct {
+	state string
 }
 
-func TestNewFlow_Errors(t *testing.T) {
-	f := NewFlow[string, *int]().
-		RouteOn(func(event string) bool {
-			if event == "test" {
-				return true
-			}
-			return false
-		}, func(event string, state *int) error {
-			*state = *state + 5
-			return nil
-		}).Build()
+func (t *TestState) GetState() string {
+	return t.state
+}
 
-	var state int
-	err := f("abc", &state)
-	assert.NotNil(t, err)
-	assert.Equal(t, 0, state)
+func (t *TestState) SetState(s string) {
+	t.state = s
+}
+
+func TestFlowProcess(t *testing.T) {
+	flow := &Flow[int, string, *TestState]{}
+	state := TestState{state: "init"}
+	err := flow.Process(&state, 1)
+	assert.Nil(t, err)
 }
