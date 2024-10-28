@@ -132,28 +132,67 @@ fmt.Printf("Received value: %d\n", value)
 - Автоматическая очистка устаревших данных
 - Потокобезопасные операции
 - Поддержка обобщённых типов для ключей и значений
+- Обработка ошибок при загрузке данных
+- Поддержка таймаутов для операций загрузки
 
-#### Пример использования:
+#### Методы:
+
+- `GetOrCreate(key K, f func(k K) V) V` - получает значение по ключу или создает новое, используя переданную функцию
+- `GetOrCreateWithErr(key K, f func(k K) (V, error)) (V, error)` - аналогичен `GetOrCreate`, но поддерживает обработку ошибок
+- `Timeout(duration time.Duration, f func(k K) (V, error)) func(k K) (V, error)` - создает функцию с таймаутом для загрузки данных
+
+#### Примеры использования:
 
 ```go
 // Создаем карту с временем жизни кэша 5 минут
 requestMap := collections.NewRequestMap[string, int](5 * time.Minute)
 
-// Функция для получения данных
-loadData := func(key string) int {
-    // Имитация долгой загрузки данных
+// Базовый пример с GetOrCreate
+result := requestMap.GetOrCreate("example", func(key string) int {
+    // Имитация загрузки данных
     time.Sleep(time.Second)
     return len(key)
+})
+fmt.Printf("Simple result: %d\n", result)
+
+// Пример с обработкой ошибок
+result, err := requestMap.GetOrCreateWithErr("example", func(key string) (int, error) {
+    // Имитация загрузки данных с возможной ошибкой
+    if len(key) == 0 {
+        return 0, errors.New("empty key")
+    }
+    return len(key), nil
+})
+if err != nil {
+    log.Printf("Error: %v\n", err)
+} else {
+    fmt.Printf("Result with error handling: %d\n", result)
 }
 
-// Получаем или создаем значение
-// Если несколько горутин запросят одно и то же значение одновременно,
-// фактическая загрузка произойдет только один раз
-value := requestMap.GetOrCreate("example", loadData)
-fmt.Printf("Value: %d\n", value)
+// Пример использования таймаута
+loadWithTimeout := requestMap.Timeout(2*time.Second, func(key string) (int, error) {
+    // Имитация долгой загрузки
+    time.Sleep(3 * time.Second)
+    return len(key), nil
+})
+
+result, err = loadWithTimeout("example")
+if err == collections.ErrTimeout {
+    fmt.Println("Operation timed out")
+} else if err != nil {
+    fmt.Printf("Error: %v\n", err)
+} else {
+    fmt.Printf("Result with timeout: %d\n", result)
+}
 ```
 
-В этом примере, если несколько горутин одновременно запросят значение для одного и того же ключа, функция `loadData` будет вызвана только один раз, а все горутины получат один и тот же результат. После истечения времени жизни (TTL) значение будет автоматически удалено из карты.
+В приведенных примерах:
+
+1. Первый пример демонстрирует базовое использование `GetOrCreate` для простой загрузки данных.
+2. Второй пример показывает использование `GetOrCreateWithErr` для обработки возможных ошибок при загрузке данных.
+3. Третий пример иллюстрирует использование метода `Timeout` для ограничения времени выполнения операции загрузки.
+
+При использовании любого из этих методов сохраняется основное преимущество `RequestMap` - дедупликация параллельных запросов. Если несколько горутин запрашивают данные для одного ключа одновременно, фактическая загрузка произойдет только один раз, а все горутины получат один и тот же результат.
 
 ## Заключение
 

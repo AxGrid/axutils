@@ -37,3 +37,16 @@ func TestRequestMap_GetOrCreate(t *testing.T) {
 	assert.Equal(t, rm.GetOrCreate(2, shortFunc), "short:2")
 	assert.Equal(t, int32(3), workCount)
 }
+
+func TestRequestMap_Timeout(t *testing.T) {
+	rm := NewRequestMap[int, string](time.Millisecond * 200)
+	longFunc := func(k int) (string, error) {
+		time.Sleep(time.Millisecond * 100)
+		return fmt.Sprintf("long:%d", k), nil
+	}
+	tFunc := rm.Timeout(time.Millisecond*50, longFunc)
+	v, err := tFunc(1)
+	assert.ErrorIs(t, err, ErrTimeout)
+	assert.Equal(t, "", v)
+	time.Sleep(150 * time.Millisecond)
+}
