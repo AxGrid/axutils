@@ -28,17 +28,17 @@ go get github.com/axgrid/axutils
 
 ```go
 guavaMap := collections.NewGuavaMap[string, int]().
-    WithLoadFunc(func(key string) (int, error) {
-        // Загрузка значения из внешнего источника
-        return len(key), nil
-    }).
-    WithMaxCount(100).
-    WithReadTimeout(5 * time.Minute).
-    Build()
+WithLoadFunc(func(key string) (int, error) {
+// Загрузка значения из внешнего источника
+return len(key), nil
+}).
+WithMaxCount(100).
+WithReadTimeout(5 * time.Minute).
+Build()
 
 value, err := guavaMap.Get("example")
 if err != nil {
-    log.Fatal(err)
+log.Fatal(err)
 }
 fmt.Printf("Value: %d\n", value)
 ```
@@ -57,8 +57,8 @@ fmt.Printf("Value: %d\n", value)
 
 ```go
 hashSet := collections.NewHashSet[string]().
-    WithMaxCount(1000).
-    Build()
+WithMaxCount(1000).
+Build()
 
 hashSet.Add("example")
 exists := hashSet.Has("example")
@@ -91,7 +91,7 @@ simpleMap := collections.NewSimpleMap[string, int]()
 simpleMap.Set("key", 42)
 value, exists := simpleMap.Get("key")
 if exists {
-    fmt.Printf("Value: %d\n", value)
+fmt.Printf("Value: %d\n", value)
 }
 ```
 
@@ -109,17 +109,51 @@ if exists {
 
 ```go
 responseMap := collections.NewResponseMap[string, int]().
-    WithTimeout(5 * time.Second).
-    Build()
+WithTimeout(5 * time.Second).
+Build()
 
 go func() {
-    time.Sleep(2 * time.Second)
-    responseMap.Set("key", 42)
+time.Sleep(2 * time.Second)
+responseMap.Set("key", 42)
 }()
 
 value := responseMap.Wait("key")
 fmt.Printf("Received value: %d\n", value)
 ```
+
+### RequestMap
+
+`RequestMap` - это потокобезопасная реализация карты для кэширования асинхронных запросов с автоматической дедупликацией и очисткой устаревших данных.
+
+#### Основные возможности:
+
+- Автоматическая дедупликация параллельных запросов с одинаковым ключом
+- Кэширование результатов с настраиваемым временем жизни (TTL)
+- Автоматическая очистка устаревших данных
+- Потокобезопасные операции
+- Поддержка обобщённых типов для ключей и значений
+
+#### Пример использования:
+
+```go
+// Создаем карту с временем жизни кэша 5 минут
+requestMap := collections.NewRequestMap[string, int](5 * time.Minute)
+
+// Функция для получения данных
+loadData := func(key string) int {
+    // Имитация долгой загрузки данных
+    time.Sleep(time.Second)
+    return len(key)
+}
+
+// Получаем или создаем значение
+// Если несколько горутин запросят одно и то же значение одновременно,
+// фактическая загрузка произойдет только один раз
+value := requestMap.GetOrCreate("example", loadData)
+fmt.Printf("Value: %d\n", value)
+```
+
+В этом примере, если несколько горутин одновременно запросят значение для одного и того же ключа, функция `loadData` будет вызвана только один раз, а все горутины получат один и тот же результат. После истечения времени жизни (TTL) значение будет автоматически удалено из карты.
 
 ## Заключение
 
