@@ -125,21 +125,16 @@ func (rm *RequestMap[K, V]) GetOrCreateWithErr(key K, f func(k K) (V, error)) (V
 // Timeout returns a function that will call f with k and return the result or ErrTimeout if the duration is exceeded
 func (rm *RequestMap[K, V]) Timeout(duration time.Duration, f func(k K) (V, error)) func(k K) (V, error) {
 	return func(k K) (V, error) {
-		var result V
 		res := make(chan resultHolder[V], 1)
-		defer close(res)
-		timeOut := false
 		go func() {
 			v, err := f(k)
-			if !timeOut {
-				res <- resultHolder[V]{result: v, err: err}
-			}
+			res <- resultHolder[V]{result: v, err: err}
 		}()
 		select {
 		case r := <-res:
 			return r.result, r.err
 		case <-time.After(duration):
-			timeOut = true
+			var result V
 			return result, ErrTimeout
 		}
 	}
