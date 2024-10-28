@@ -8,15 +8,6 @@ import (
 	"time"
 )
 
-/*
-   ________  ________   _______   ______    ______   _______    _______
-  /        \/        \//       \//      \ //      \ /       \\//       \
- /        _/        _//        //       ///       //        ///        /
-/-        //       //        _/        //        //         /        _/
-\_______// \_____// \________/\________/\________/\___/____/\____/___/
-zed (28.10.2024)
-*/
-
 func TestRequestMap_GetOrCreate(t *testing.T) {
 	rm := NewRequestMap[int, string](time.Millisecond * 200)
 	workCount := int32(0)
