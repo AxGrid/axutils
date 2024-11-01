@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"context"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"sync"
@@ -306,4 +307,16 @@ func TestGuavaMap_LoadWithError(t *testing.T) {
 	}
 	wg.Wait()
 	assert.Equal(t, 10, m.Size())
+}
+
+func TestGuavaMap_Delete(t *testing.T) {
+	ctx := context.Background()
+	m := NewGuavaMap[int, int]().
+		WithContext(ctx).
+		WithWriteTimeout(time.Minute * 30).
+		WithMaxCount(10_000).
+		WithLoadFunc(func(key int) (int, error) {
+			return key * 10, nil
+		}).Build()
+	m.Delete(20)
 }

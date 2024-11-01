@@ -123,7 +123,7 @@ func (m *GuavaMap[K, V]) safeDelete(key K) {
 	}
 	if m.readTimeout > 0 || m.writeTimeout > 0 {
 		v := m.stored[key]
-		if v.cancelFn != nil {
+		if v != nil && v.cancelFn != nil {
 			v.cancelFn()
 		}
 	}
