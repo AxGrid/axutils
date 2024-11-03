@@ -15,7 +15,7 @@
 ## Установка
 
 ```bash
-go get github.com/yourusername/axmiddleware
+go get github.com/axgrid/axutils
 ```
 
 ## Быстрый старт
@@ -31,7 +31,7 @@ import (
     "github.com/rs/zerolog/log"
 )
 
-// Определяем типы запроса и ответа
+// Define request and response types
 type Request struct {
     Data string
 }
@@ -41,30 +41,29 @@ type Response struct {
 }
 
 func main() {
-    // Создаем процессор с нужными типами
+    // Create processor
     processor := axmiddleware.NewProcessor[Request, Response]().
         WithLogger(log.Logger).
         WithMiddlewares(
             axmiddleware.CatchPanicMiddlewares[Request, Response],
             axmiddleware.LogRequestResponseMiddlewares[Request, Response],
         ).
-        WithHandlers(yourHandler).
+        WithHandlers(handler).
         Build()
 
-    // Обрабатываем запрос
-    request := Request{Data: "тест"}
+    // Process request
+    request := Request{Data: "test"}
     response := Response{}
     
     statusCode, err := processor.Process(context.Background(), request, &response)
     if err != nil {
-        log.Error().Err(err).Msg("Ошибка обработки")
+        log.Error().Err(err).Msg("Processing error")
     }
 }
 
-func yourHandler(c *axmiddleware.Context[Request, Response]) {
-    // Бизнес-логика
+func handler(c *axmiddleware.Context[Request, Response]) {
     req := c.Request()
-    c.Response().Result = "Обработано: " + req.Data
+    c.Response().Result = "Processed: " + req.Data
 }
 ```
 
@@ -108,23 +107,23 @@ axmiddleware.LogRequestResponseMiddlewares[R, S]
 ### Создание собственного Middleware
 
 ```go
-func ВашCustomMiddleware[R, S any](ctx *axmiddleware.Context[R, S]) {
-    // Пред-обработка
-    ctx.Logger().Info().Msg("До обработки")
+func CustomMiddleware[R, S any](ctx *axmiddleware.Context[R, S]) {
+    // Pre-processing
+    ctx.Logger().Info().Msg("Before processing")
     
-    ctx.Next() // Переход к следующему middleware
+    ctx.Next() // Continue to next middleware
     
-    // Пост-обработка
-    ctx.Logger().Info().Msg("После обработки")
+    // Post-processing
+    ctx.Logger().Info().Msg("After processing")
 }
 ```
 
 ### Обработка ошибок
 
 ```go
-func МидлварОбработкиОшибок[R, S any](ctx *axmiddleware.Context[R, S]) {
-    if проверкаУсловия {
-        ctx.AbortWithErrorAndCode(400, errors.New("некорректный запрос"))
+func ErrorHandlingMiddleware[R, S any](ctx *axmiddleware.Context[R, S]) {
+    if condition {
+        ctx.AbortWithErrorAndCode(400, errors.New("invalid request"))
         return
     }
     ctx.Next()
@@ -134,33 +133,38 @@ func МидлварОбработкиОшибок[R, S any](ctx *axmiddleware.Co
 ### Работа с контекстом
 
 ```go
-func МидлварОбогащенияКонтекста[R, S any](ctx *axmiddleware.Context[R, S]) {
-    ctx.WithValue("ключ", "значение")
+func ContextMiddleware[R, S any](ctx *axmiddleware.Context[R, S]) {
+    ctx.WithValue("key", "value")
     ctx.Next()
     
-    // Доступ к значению в последующих middleware
-    значение := ctx.MustStringValue("ключ")
+    // Access value in next middlewares
+    value := ctx.MustStringValue("key")
 }
 ```
 
 ## Особенности использования
 
 1. **Типобезопасность**
-    - Все операции с запросами и ответами проверяются на этапе компиляции
-    - Исключены ошибки приведения типов во время выполнения
+   - Все операции с запросами и ответами проверяются на этапе компиляции
+   - Исключены ошибки приведения типов во время выполнения
 
 2. **Производительность**
-    - Минимальные накладные расходы благодаря использованию дженериков
-    - Эффективная обработка цепочки middleware
+   - Минимальные накладные расходы благодаря использованию дженериков
+   - Эффективная обработка цепочки middleware
 
 3. **Расширяемость**
-    - Легко добавлять новые middleware
-    - Возможность создания составных middleware
-    - Гибкая настройка под различные сценарии использования
+   - Легко добавлять новые middleware
+   - Возможность создания составных middleware
+   - Гибкая настройка под различные сценарии использования
+
+## Требования
+
+- Go 1.18 или выше (необходима поддержка дженериков)
+- github.com/rs/zerolog для логирования
 
 ## Лицензия
 
-[Укажите вашу лицензию]
+MIT
 
 ## Участие в разработке
 
