@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -14,37 +15,50 @@ zed (11.04.2024)
 */
 
 type ResponseMapBuilder[K comparable, V any] struct {
-	timeout time.Duration
+	ctx             context.Context
+	responseTimeout time.Duration
+	clearTimeout    time.Duration
 }
 
-func NewResponseMap[K comparable, V any]() *ResponseMapBuilder[K, V] {
+func NewResponseMap[K comparable, V any](ctx context.Context) *ResponseMapBuilder[K, V] {
 	return &ResponseMapBuilder[K, V]{
-		timeout: time.Second * 100,
+		ctx:             ctx,
+		responseTimeout: time.Second * 100,
+		clearTimeout:    time.Second * 100,
 	}
 }
 
-func (b *ResponseMapBuilder[K, V]) WithTimeout(timeout time.Duration) *ResponseMapBuilder[K, V] {
-	b.timeout = timeout
+func (b *ResponseMapBuilder[K, V]) WithResponseTimeout(timeout time.Duration) *ResponseMapBuilder[K, V] {
+	b.responseTimeout = timeout
+	return b
+}
+
+func (b *ResponseMapBuilder[K, V]) WithClearTimeout(timeout time.Duration) *ResponseMapBuilder[K, V] {
+	b.clearTimeout = timeout
 	return b
 }
 
 func (b *ResponseMapBuilder[K, V]) Build() *ResponseMap[K, V] {
 	rm := &ResponseMap[K, V]{
-		timeout: b.timeout,
-		mu:      sync.RWMutex{},
-		m:       make(map[K]*chansHolder[V]),
+		responseTimeout: b.responseTimeout,
+		clearTimeout:    b.clearTimeout,
+		mu:              sync.RWMutex{},
+		m:               make(map[K]*chansHolder[V]),
 	}
+	go rm.clear(b.ctx)
 	return rm
 }
 
 type ResponseMap[K comparable, V any] struct {
-	timeout time.Duration
-	mu      sync.RWMutex
-	m       map[K]*chansHolder[V]
+	responseTimeout time.Duration
+	clearTimeout    time.Duration
+	mu              sync.RWMutex
+	m               map[K]*chansHolder[V]
 }
 
 type chansHolder[V any] struct {
 	t         *time.Timer
+	createdAt time.Time
 	mu        sync.RWMutex
 	isExist   bool
 	data      V
@@ -54,8 +68,9 @@ type chansHolder[V any] struct {
 
 func newChansHolder[V any](timeout time.Duration) *chansHolder[V] {
 	h := &chansHolder[V]{
-		t:      time.NewTimer(timeout),
-		dataCh: make(chan V, 1),
+		t:         time.NewTimer(timeout),
+		createdAt: time.Now(),
+		dataCh:    make(chan V, 1),
 	}
 	go func() {
 		defer h.t.Stop()
@@ -130,7 +145,32 @@ func (r *ResponseMap[K, V]) getHolder(key K) *chansHolder[V] {
 	if ok {
 		return holder
 	}
-	holder = newChansHolder[V](r.timeout)
+	holder = newChansHolder[V](r.responseTimeout)
 	r.m[key] = holder
 	return holder
+}
+
+func (r *ResponseMap[K, V]) clear(ctx context.Context) {
+	t := time.NewTicker(r.clearTimeout)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			var remove []K
+			r.mu.RLock()
+			for k, holder := range r.m {
+				if time.Now().After(holder.createdAt.Add(r.clearTimeout)) {
+					remove = append(remove, k)
+				}
+			}
+			r.mu.RUnlock()
+			r.mu.Lock()
+			for _, key := range remove {
+				delete(r.m, key)
+			}
+			r.mu.Unlock()
+		}
+	}
 }

@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
@@ -14,7 +15,7 @@ type mockResponse struct {
 }
 
 func TestResponseMap_Wait(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().Build()
+	m := NewResponseMap[string, *mockResponse](context.Background()).Build()
 	k := "key"
 	res := []byte("ok")
 	go func() {
@@ -29,14 +30,14 @@ func TestResponseMap_Wait(t *testing.T) {
 
 func TestResponseMap_WaitTimeout(t *testing.T) {
 	timeout := 2 * time.Second
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(timeout).Build()
+	m := NewResponseMap[string, *mockResponse](context.Background()).WithResponseTimeout(timeout).Build()
 	k := "key"
 	v := m.Wait(k)
 	assert.Nil(t, v)
 }
 
 func TestResponseMap_WaitMultiple(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().Build()
+	m := NewResponseMap[string, *mockResponse](context.Background()).Build()
 	k := "key"
 	res := []byte("ok")
 
@@ -60,7 +61,7 @@ func TestResponseMap_WaitMultiple(t *testing.T) {
 
 func TestResponseMap_WaitMultipleTimeout(t *testing.T) {
 	timeout := 2 * time.Second
-	m := NewResponseMap[string, *mockResponse]().WithTimeout(timeout).Build()
+	m := NewResponseMap[string, *mockResponse](context.Background()).WithResponseTimeout(timeout).Build()
 	k := "key"
 
 	wg := sync.WaitGroup{}
@@ -79,7 +80,7 @@ func TestResponseMap_WaitMultipleTimeout(t *testing.T) {
 }
 
 func TestResponseMap_Set(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse]().Build()
+	m := NewResponseMap[string, *mockResponse](context.Background()).Build()
 	k := "key"
 	res := []byte("ok")
 
@@ -89,4 +90,15 @@ func TestResponseMap_Set(t *testing.T) {
 	assert.NotNil(t, v)
 	assert.Nil(t, v.err)
 	assert.Equal(t, res, v.data)
+}
+
+func TestResponseMap_ClearTimeout(t *testing.T) {
+	m := NewResponseMap[string, *mockResponse](context.Background()).WithClearTimeout(1 * time.Second).Build()
+	k := "key"
+	go func() {
+		v := m.Wait(k)
+		assert.Nil(t, v)
+	}()
+	time.Sleep(1500 * time.Millisecond)
+	assert.Empty(t, m.m)
 }
