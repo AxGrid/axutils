@@ -23,13 +23,12 @@ type resultHolder[K comparable, V any] struct {
 }
 
 type RequestMap[K comparable, V any] struct {
-	waiters       map[K][]chan resultHolder[K, V]
-	response      map[K]resultHolder[K, V]
-	mu            sync.RWMutex
-	deleteAfter   time.Duration
-	resultSlice   []resultHolder[K, V]
-	resultSliceMu sync.RWMutex
-	ctx           context.Context
+	waiters     map[K][]chan resultHolder[K, V]
+	response    map[K]resultHolder[K, V]
+	mu          sync.RWMutex
+	deleteAfter time.Duration
+	resultSlice []resultHolder[K, V]
+	ctx         context.Context
 }
 
 func NewRequestMap[K comparable, V any](ctx context.Context, ttl time.Duration, init ...*RequestMapInitializer[K, V]) *RequestMap[K, V] {
@@ -52,19 +51,17 @@ func NewRequestMap[K comparable, V any](ctx context.Context, ttl time.Duration, 
 func (rm *RequestMap[K, V]) rmWorker() {
 
 	do := func() {
-		rm.resultSliceMu.RLock()
+		rm.mu.RLock()
 		if len(rm.resultSlice) == 0 {
-			rm.resultSliceMu.RUnlock()
+			rm.mu.RUnlock()
 			return
 		}
 		first := rm.resultSlice[0]
-		rm.resultSliceMu.RUnlock()
+		rm.mu.RUnlock()
 		if time.Since(first.resultTime) < rm.deleteAfter {
 			return
 		}
 
-		rm.resultSliceMu.Lock()
-		defer rm.resultSliceMu.Unlock()
 		rm.mu.Lock()
 		defer rm.mu.Unlock()
 		for i, r := range rm.resultSlice {
@@ -73,7 +70,6 @@ func (rm *RequestMap[K, V]) rmWorker() {
 				return
 			}
 			delete(rm.response, r.key)
-			delete(rm.waiters, r.key)
 		}
 	}
 
@@ -131,16 +127,13 @@ func (rm *RequestMap[K, V]) GetOrCreate(key K, f func(k K) V) V {
 				//defer rm.mu.Unlock()
 				//delete(rm.waiters, key)
 				//delete(rm.response, key)
-				rm.resultSliceMu.Lock()
+				rm.mu.Lock()
 				rm.resultSlice = append(rm.resultSlice, r)
-				rm.resultSliceMu.Unlock()
+				rm.mu.Unlock()
 			}()
 		}()
 	}
-	println("wait from chan", rm.waiters)
 	res := <-ch
-	println("res to chan", rm.waiters)
-
 	return res.result
 }
 
@@ -185,9 +178,9 @@ func (rm *RequestMap[K, V]) GetOrCreateWithErr(key K, f func(k K) (V, error)) (V
 				//defer rm.mu.Unlock()
 				//delete(rm.waiters, key)
 				//delete(rm.response, key)
-				rm.resultSliceMu.Lock()
+				rm.mu.Lock()
 				rm.resultSlice = append(rm.resultSlice, r)
-				rm.resultSliceMu.Unlock()
+				rm.mu.Unlock()
 			}()
 		}()
 	}

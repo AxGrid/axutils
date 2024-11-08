@@ -178,6 +178,15 @@ func TestWaitMap_Billing4(t *testing.T) {
 		return &demo{value: 100}
 	})
 	t.Log(r.value)
+	assert.Equal(t, 100, r.value)
+	time.Sleep(time.Millisecond * 20)
+	r = wa.GetOrCreate("trx-1", func(trx string) *demo {
+		t.Log("create 1")
+		time.Sleep(time.Millisecond * 100)
+		return &demo{value: 100}
+	})
+	t.Log(r.value)
+	assert.Equal(t, 100, r.value)
 	time.Sleep(time.Millisecond * 200)
 
 	r = wa.GetOrCreate("trx-1", func(trx string) *demo {
@@ -186,6 +195,7 @@ func TestWaitMap_Billing4(t *testing.T) {
 		return &demo{value: 150}
 	})
 	t.Log(r.value)
+	assert.Equal(t, 150, r.value)
 }
 
 func TestWaitMap_Billing3(t *testing.T) {
@@ -237,7 +247,7 @@ func TestWaitMap_Billing3(t *testing.T) {
 		for {
 			time.Sleep(time.Second)
 			resMapMu.RLock()
-			t.Log("count", wa.Count(), len(resMap))
+			t.Log("count-map", wa.Count(), len(resMap))
 			resMapMu.RUnlock()
 		}
 	}()
