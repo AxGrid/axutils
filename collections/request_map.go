@@ -161,16 +161,11 @@ func (rm *RequestMap[K, V]) GetOrCreateWithErr(key K, f func(k K) (V, error)) (V
 			rm.mu.Lock()
 			r := resultHolder[K, V]{key: key, result: vx, err: err, resultTime: time.Now()}
 			rm.response[key] = r
-			rm.mu.Unlock()
-			rm.mu.RLock()
 			for _, c := range rm.waiters[key] {
 				c <- r
 			}
-			rm.mu.RUnlock()
-			rm.mu.Lock()
 			delete(rm.waiters, key)
 			rm.mu.Unlock()
-
 			// Start remove goroutine
 			go func() {
 				//time.Sleep(rm.deleteAfter)

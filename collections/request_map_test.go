@@ -101,7 +101,6 @@ func TestWaitMap_Billing(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-
 }
 
 func TestWaitMap_Billing2(t *testing.T) {
@@ -257,7 +256,7 @@ func TestWaitMap_Billing3(t *testing.T) {
 	t.Log("count", wa.Count())
 	t.Log("delta goroutine", runtime.NumGoroutine()-startGor)
 	t.Log("delta time", time.Now().Sub(startTime).Milliseconds())
-	time.Sleep(time.Millisecond * 1010)
+	time.Sleep(time.Millisecond * 500)
 	t.Log("count", wa.Count())
 	t.Log("delta goroutine", runtime.NumGoroutine()-startGor)
 }
