@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"sync/atomic"
@@ -49,4 +50,19 @@ func TestRequestMap_Timeout(t *testing.T) {
 	assert.ErrorIs(t, err, ErrTimeout)
 	assert.Equal(t, "", v)
 	time.Sleep(150 * time.Millisecond)
+}
+
+func TestRequestMap_GetOrCreateWeb(t *testing.T) {
+	// Создаем где-то вверху на конструкторе
+	rm := NewRequestMap[string, []byte](time.Minute * 20)
+	for i := 0; i < 100000; i++ {
+		go func(i int) {
+			key := fmt.Sprintf("key-%d", i)
+			data := rm.GetOrCreate(key, func(k string) []byte {
+				return []byte(hex.EncodeToString([]byte(k)))
+			})
+			assert.Equal(t, data, []byte(hex.EncodeToString([]byte(key))))
+		}(i)
+	}
+
 }
