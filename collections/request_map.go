@@ -10,9 +10,9 @@ import (
 var ErrTimeout = errors.New("timeout")
 
 type RequestMapInitializer[K comparable, V any] struct {
-	key    K
-	result V
-	err    error
+	Key    K
+	Result V
+	Err    error
 }
 
 type resultHolder[K comparable, V any] struct {
@@ -41,7 +41,7 @@ func NewRequestMap[K comparable, V any](ctx context.Context, ttl time.Duration, 
 	}
 	if len(init) > 0 {
 		for _, i := range init {
-			res.response[i.key] = resultHolder[K, V]{key: i.key, result: i.result, err: i.err, resultTime: time.Now()}
+			res.response[i.Key] = resultHolder[K, V]{key: i.Key, result: i.Result, err: i.Err, resultTime: time.Now()}
 		}
 	}
 	go res.rmWorker()
@@ -91,7 +91,7 @@ func (rm *RequestMap[K, V]) Count() int {
 	return a + b
 }
 
-// GetOrCreate returns the value for the key if it exists, otherwise it calls the function f and returns the result
+// GetOrCreate returns the value for the Key if it exists, otherwise it calls the function f and returns the Result
 func (rm *RequestMap[K, V]) GetOrCreate(key K, f func(k K) V) V {
 	rm.mu.RLock()
 	v, ok := rm.response[key]
@@ -137,7 +137,7 @@ func (rm *RequestMap[K, V]) GetOrCreate(key K, f func(k K) V) V {
 	return res.result
 }
 
-// GetOrCreateWithErr returns the value for the key if it exists, otherwise it calls the function f and returns the result
+// GetOrCreateWithErr returns the value for the Key if it exists, otherwise it calls the function f and returns the Result
 func (rm *RequestMap[K, V]) GetOrCreateWithErr(key K, f func(k K) (V, error)) (V, error) {
 	rm.mu.RLock()
 	v, ok := rm.response[key]
@@ -183,7 +183,7 @@ func (rm *RequestMap[K, V]) GetOrCreateWithErr(key K, f func(k K) (V, error)) (V
 	return res.result, res.err
 }
 
-// Timeout returns a function that will call f with k and return the result or ErrTimeout if the duration is exceeded
+// Timeout returns a function that will call f with k and return the Result or ErrTimeout if the duration is exceeded
 func (rm *RequestMap[K, V]) Timeout(duration time.Duration, f func(k K) (V, error)) func(k K) (V, error) {
 	return func(k K) (V, error) {
 		res := make(chan resultHolder[K, V], 1)

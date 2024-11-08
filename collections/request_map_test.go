@@ -61,7 +61,7 @@ func TestRequestMap_GetOrCreateWeb(t *testing.T) {
 	rm := NewRequestMap[string, []byte](context.Background(), time.Minute*20)
 	for i := 0; i < 100000; i++ {
 		go func(i int) {
-			key := fmt.Sprintf("key-%d", i)
+			key := fmt.Sprintf("Key-%d", i)
 			data := rm.GetOrCreate(key, func(k string) []byte {
 				return []byte(hex.EncodeToString([]byte(k)))
 			})
@@ -97,7 +97,7 @@ func TestWaitMap_Billing(t *testing.T) {
 				res := billingFunc(trx)
 				return res
 			})
-			t.Log(trx, "result", res.value, res.err, res.errMsg)
+			t.Log(trx, "Result", res.value, res.err, res.errMsg)
 		}(i)
 	}
 	wg.Wait()
@@ -125,7 +125,7 @@ func TestWaitMap_Billing2(t *testing.T) {
 	prevsResult := make([]*RequestMapInitializer[string, *demo], 0, 10)
 	for i := 1; i < 10; i++ {
 		trx := fmt.Sprintf("trx-%d", i)
-		prevsResult = append(prevsResult, &RequestMapInitializer[string, *demo]{key: trx, result: &demo{value: 12000 + i}})
+		prevsResult = append(prevsResult, &RequestMapInitializer[string, *demo]{Key: trx, Result: &demo{value: 12000 + i}})
 	}
 
 	// Создаем очередь запросов
@@ -141,7 +141,7 @@ func TestWaitMap_Billing2(t *testing.T) {
 				res := billingFunc(trx)
 				return res
 			})
-			t.Log(time.Now().Format(time.StampMicro), trx, "result", res.value, res.err, res.errMsg)
+			t.Log(time.Now().Format(time.StampMicro), trx, "Result", res.value, res.err, res.errMsg)
 		}(i)
 	}
 	wg.Wait()
@@ -156,7 +156,7 @@ func TestWaitMap_Billing2(t *testing.T) {
 				res := billingFunc(trx)
 				return res
 			})
-			t.Log(time.Now().Format(time.StampMicro), trx, "result", res.value, res.err, res.errMsg)
+			t.Log(time.Now().Format(time.StampMicro), trx, "Result", res.value, res.err, res.errMsg)
 		}(i)
 	}
 
