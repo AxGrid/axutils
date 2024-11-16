@@ -92,12 +92,22 @@ func TestResponseMap_Set(t *testing.T) {
 	assert.Equal(t, res, v.data)
 }
 
-func TestResponseMap_ClearTimeout(t *testing.T) {
+func TestResponseMap_ClearTimeout_Wait(t *testing.T) {
 	m := NewResponseMap[string, *mockResponse](context.Background()).WithClearTimeout(1 * time.Second).Build()
 	k := "key"
 	go func() {
 		v := m.Wait(k)
 		assert.Nil(t, v)
+	}()
+	time.Sleep(1500 * time.Millisecond)
+	assert.Empty(t, m.m)
+}
+
+func TestResponseMap_ClearTimeout_Set(t *testing.T) {
+	m := NewResponseMap[string, *mockResponse](context.Background()).WithClearTimeout(1 * time.Second).Build()
+	k := "key"
+	go func() {
+		m.Set(k, &mockResponse{data: []byte("ok")})
 	}()
 	time.Sleep(1500 * time.Millisecond)
 	assert.Empty(t, m.m)
