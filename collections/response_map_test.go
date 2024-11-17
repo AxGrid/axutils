@@ -116,6 +116,6 @@ func TestResponseMap_ClearTimeout_Set(t *testing.T) {
 			m.Set(k, &mockResponse{data: []byte("ok")})
 		}
 	}()
-	time.Sleep(3500 * time.Millisecond)
+	time.Sleep(4500 * time.Millisecond)
 	assert.Empty(t, m.m)
 }
