@@ -2,7 +2,10 @@ package collections
 
 import (
 	"context"
+	"fmt"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -104,11 +107,15 @@ func TestResponseMap_ClearTimeout_Wait(t *testing.T) {
 }
 
 func TestResponseMap_ClearTimeout_Set(t *testing.T) {
-	m := NewResponseMap[string, *mockResponse](context.Background()).WithClearTimeout(1 * time.Second).Build()
+	l := zerolog.New(os.Stdout)
+	m := NewResponseMap[string, *mockResponse](context.Background()).WithClearTimeout(2 * time.Second).WithLogger(l).Build()
 	k := "key"
 	go func() {
-		m.Set(k, &mockResponse{data: []byte("ok")})
+		for i := 0; i < 100; i++ {
+			k = fmt.Sprintf("key-%d", i)
+			m.Set(k, &mockResponse{data: []byte("ok")})
+		}
 	}()
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(3500 * time.Millisecond)
 	assert.Empty(t, m.m)
 }

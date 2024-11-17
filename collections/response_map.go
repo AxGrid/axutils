@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"github.com/rs/zerolog"
 	"sync"
 	"time"
 )
@@ -16,6 +17,7 @@ zed (11.04.2024)
 
 type ResponseMapBuilder[K comparable, V any] struct {
 	ctx             context.Context
+	logger          zerolog.Logger
 	responseTimeout time.Duration
 	clearTimeout    time.Duration
 }
@@ -26,6 +28,11 @@ func NewResponseMap[K comparable, V any](ctx context.Context) *ResponseMapBuilde
 		responseTimeout: time.Second * 100,
 		clearTimeout:    time.Second * 100,
 	}
+}
+
+func (b *ResponseMapBuilder[K, V]) WithLogger(l zerolog.Logger) *ResponseMapBuilder[K, V] {
+	b.logger = l
+	return b
 }
 
 func (b *ResponseMapBuilder[K, V]) WithResponseTimeout(timeout time.Duration) *ResponseMapBuilder[K, V] {
@@ -40,6 +47,7 @@ func (b *ResponseMapBuilder[K, V]) WithClearTimeout(timeout time.Duration) *Resp
 
 func (b *ResponseMapBuilder[K, V]) Build() *ResponseMap[K, V] {
 	rm := &ResponseMap[K, V]{
+		logger:          b.logger,
 		responseTimeout: b.responseTimeout,
 		clearTimeout:    b.clearTimeout,
 		mu:              sync.RWMutex{},
@@ -50,6 +58,7 @@ func (b *ResponseMapBuilder[K, V]) Build() *ResponseMap[K, V] {
 }
 
 type ResponseMap[K comparable, V any] struct {
+	logger          zerolog.Logger
 	responseTimeout time.Duration
 	clearTimeout    time.Duration
 	mu              sync.RWMutex
@@ -158,6 +167,7 @@ func (r *ResponseMap[K, V]) clear(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			r.logger.Debug().Int("holders count", len(r.m)).Msg("start cleaning response map")
 			var remove []K
 			r.mu.RLock()
 			for k, holder := range r.m {
@@ -166,11 +176,13 @@ func (r *ResponseMap[K, V]) clear(ctx context.Context) {
 				}
 			}
 			r.mu.RUnlock()
+			r.logger.Debug().Int("should remove", len(remove)).Msg("collect expired holders")
 			r.mu.Lock()
 			for _, key := range remove {
 				delete(r.m, key)
 			}
 			r.mu.Unlock()
+			r.logger.Debug().Int("holders count", len(r.m)).Msg("successfully cleaned expired holders")
 		}
 	}
 }
