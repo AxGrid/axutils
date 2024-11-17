@@ -29,8 +29,8 @@ go get github.com/axgrid/axutils
 ```go
 guavaMap := collections.NewGuavaMap[string, int]().
 WithLoadFunc(func(key string) (int, error) {
-// Загрузка значения из внешнего источника
-return len(key), nil
+    // Загрузка значения из внешнего источника
+    return len(key), nil
 }).
 WithMaxCount(100).
 WithReadTimeout(5 * time.Minute).
@@ -38,9 +38,77 @@ Build()
 
 value, err := guavaMap.Get("example")
 if err != nil {
-log.Fatal(err)
+    log.Fatal(err)
 }
 fmt.Printf("Value: %d\n", value)
+```
+
+### WaitMap
+
+`WaitMap` - это реализация карты с поддержкой ожидания значений и автоматической очисткой устаревших данных.
+
+#### Основные возможности:
+
+- Асинхронное ожидание значений
+- Автоматическая очистка данных по TTL
+- Таймауты на запросы
+- Контекст для управления жизненным циклом
+- Потокобезопасные операции
+
+#### Пример использования:
+
+```go
+waitMap := collections.NewWaitMap[string, int]().
+    WithRequestTimeout(10 * time.Second).
+    WithResponseTtl(5 * time.Minute).
+    WithContext(ctx).
+    Build()
+
+// Асинхронная установка значения
+go func() {
+    time.Sleep(2 * time.Second)
+    waitMap.Set("key", 42)
+}()
+
+// Ожидание значения
+value := waitMap.Wait("key")
+fmt.Printf("Received value: %d\n", value)
+```
+
+### StructUniqSet
+
+`StructUniqSet` - это реализация множества для хранения уникальных структур с поддержкой TTL.
+
+#### Основные возможности:
+
+- Хранение уникальных структур любого типа
+- Автоматическая очистка устаревших элементов
+- Настраиваемая функция построения хеша
+- Потокобезопасные операции
+- Контроль времени жизни элементов
+
+#### Пример использования:
+
+```go
+type MyStruct struct {
+    ID   int
+    Name string
+}
+
+set := collections.NewStructUniqSet[MyStruct]().
+    WithElementTtl(30 * time.Minute).
+    WithCheckInterval(time.Second).
+    WithContext(ctx).
+    Build()
+
+item := MyStruct{ID: 1, Name: "example"}
+added, err := set.Add(item)
+if err != nil {
+    log.Fatal(err)
+}
+
+exists, _ := set.Has(item)
+fmt.Printf("Item exists in set: %v\n", exists)
 ```
 
 ### HashSet
@@ -91,7 +159,7 @@ simpleMap := collections.NewSimpleMap[string, int]()
 simpleMap.Set("key", 42)
 value, exists := simpleMap.Get("key")
 if exists {
-fmt.Printf("Value: %d\n", value)
+    fmt.Printf("Value: %d\n", value)
 }
 ```
 
@@ -113,8 +181,8 @@ WithTimeout(5 * time.Second).
 Build()
 
 go func() {
-time.Sleep(2 * time.Second)
-responseMap.Set("key", 42)
+    time.Sleep(2 * time.Second)
+    responseMap.Set("key", 42)
 }()
 
 value := responseMap.Wait("key")
@@ -185,14 +253,6 @@ if err == collections.ErrTimeout {
     fmt.Printf("Result with timeout: %d\n", result)
 }
 ```
-
-В приведенных примерах:
-
-1. Первый пример демонстрирует базовое использование `GetOrCreate` для простой загрузки данных.
-2. Второй пример показывает использование `GetOrCreateWithErr` для обработки возможных ошибок при загрузке данных.
-3. Третий пример иллюстрирует использование метода `Timeout` для ограничения времени выполнения операции загрузки.
-
-При использовании любого из этих методов сохраняется основное преимущество `RequestMap` - дедупликация параллельных запросов. Если несколько горутин запрашивают данные для одного ключа одновременно, фактическая загрузка произойдет только один раз, а все горутины получат один и тот же результат.
 
 ## Заключение
 

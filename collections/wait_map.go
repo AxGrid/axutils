@@ -32,31 +32,6 @@ func (wm *WaitMap[K, V]) Count() int {
 	return a + b
 }
 
-func (wm *WaitMap[K, V]) Set(key K, value V) {
-	wm.mu.Lock()
-	defer wm.mu.Unlock()
-	if _, ok := wm.dataHolder[key]; ok {
-		return
-	}
-	wm.dataHolder[key] = value
-	if chans, ok := wm.waiterChannels[key]; ok {
-		for _, ch := range chans {
-			ch <- value
-		}
-		delete(wm.waiterChannels, key)
-	}
-	go func() {
-		select {
-		case <-wm.ctx.Done():
-			return
-		case <-time.After(wm.responseTtl):
-			wm.mu.Lock()
-			defer wm.mu.Unlock()
-			delete(wm.dataHolder, key)
-		}
-	}()
-}
-
 func (wm *WaitMap[K, V]) Wait(key K) V {
 	wm.mu.RLock()
 	value, ok := wm.dataHolder[key]
@@ -64,19 +39,30 @@ func (wm *WaitMap[K, V]) Wait(key K) V {
 	if ok {
 		return value
 	}
+
 	wm.mu.Lock()
 	value, ok = wm.dataHolder[key]
 	if ok {
 		wm.mu.Unlock()
 		return value
 	}
+
 	ch := make(chan V, 1)
 	_, ok = wm.waiterChannels[key]
 	if !ok {
 		go func() {
 			select {
 			case <-wm.ctx.Done():
-				return
+				wm.mu.Lock()
+				if chans, exists := wm.waiterChannels[key]; exists {
+					var v V
+					for _, ch := range chans {
+						ch <- v
+						close(ch)
+					}
+					delete(wm.waiterChannels, key)
+				}
+				wm.mu.Unlock()
 			case <-time.After(wm.requestTimeout): // TIMEOUT
 				var v V
 				wm.Set(key, v)
@@ -85,7 +71,41 @@ func (wm *WaitMap[K, V]) Wait(key K) V {
 	}
 	wm.waiterChannels[key] = append(wm.waiterChannels[key], ch)
 	wm.mu.Unlock()
-	return <-ch
+
+	value = <-ch
+	return value
+}
+
+func (wm *WaitMap[K, V]) Set(key K, value V) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	if _, ok := wm.dataHolder[key]; ok {
+		return
+	}
+
+	wm.dataHolder[key] = value
+	if chans, ok := wm.waiterChannels[key]; ok {
+		for _, ch := range chans {
+			ch <- value
+			close(ch) // Закрываем канал после отправки значения
+		}
+		delete(wm.waiterChannels, key)
+	}
+
+	go func() {
+		select {
+		case <-wm.ctx.Done():
+			wm.mu.Lock()
+			delete(wm.dataHolder, key)
+			wm.mu.Unlock()
+			return
+		case <-time.After(wm.responseTtl):
+			wm.mu.Lock()
+			delete(wm.dataHolder, key)
+			wm.mu.Unlock()
+		}
+	}()
 }
 
 type WaitMapBuilder[K comparable, V any] struct {
