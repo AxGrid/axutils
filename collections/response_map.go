@@ -102,7 +102,9 @@ func newChansHolder[K comparable, V any](trx K, timeout time.Duration) *chansHol
 				for _, ch := range h.listeners {
 					close(ch)
 				}
+				h.mu.Lock()
 				h.listeners = nil
+				h.mu.Unlock()
 			case d := <-h.dataCh:
 				h.mu.Lock()
 				h.data = d
