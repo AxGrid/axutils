@@ -3,6 +3,9 @@ package collections
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"math/rand/v2"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -78,4 +81,31 @@ func TestWaitMap_WaitSet(t *testing.T) {
 	assert.Nil(t, w2)
 	time.Sleep(time.Millisecond * 200)
 	assert.Equal(t, 0, wm.Count())
+}
+
+func TestWaitMap_MemoryLeak(t *testing.T) {
+	type demo struct {
+		name string
+	}
+	wm := NewWaitMap[int32, *demo]().WithRequestTimeout(time.Millisecond * 50).WithResponseTtl(time.Millisecond * 300).Build()
+	wg := sync.WaitGroup{}
+
+	gor := runtime.NumGoroutine()
+	for i := 0; i < 1_000_000; i++ {
+		wg.Add(1)
+		r := rand.Int32N(3000)
+		go func(trx int32) {
+			time.Sleep(time.Millisecond * 10)
+			wm.Set(trx, &demo{name: "demo"})
+		}(r)
+		go func() {
+			wm.Wait(r)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	time.Sleep(time.Millisecond * 500)
+	assert.Equal(t, 0, wm.Count())
+	t.Log("delta goroutine", runtime.NumGoroutine()-gor)
+	assert.Less(t, runtime.NumGoroutine(), gor+1)
 }
