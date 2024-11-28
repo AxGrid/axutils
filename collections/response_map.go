@@ -93,6 +93,10 @@ func newChansHolder[K comparable, V any](trx K, timeout time.Duration) *chansHol
 		for {
 			select {
 			case <-h.ctx.Done():
+				close(h.dataCh)
+				for _, ch := range h.listeners {
+					close(ch)
+				}
 				return
 			case <-h.t.C:
 				for _, ch := range h.listeners {
