@@ -118,3 +118,19 @@ func TestResponseMap_ClearTimeout_Set(t *testing.T) {
 	time.Sleep(4500 * time.Millisecond)
 	assert.Empty(t, m.m)
 }
+
+func TestResponseMap_StuckOnDataChan(t *testing.T) {
+	l := zerolog.New(os.Stdout)
+	m := NewResponseMap[string, *mockResponse](context.Background()).WithResponseTimeout(1 * time.Second).WithClearTimeout(2 * time.Second).WithLogger(l).Build()
+
+	key := "key"
+	wg := sync.WaitGroup{}
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.Set(key, &mockResponse{data: []byte("ok")})
+		}()
+	}
+	wg.Wait()
+}

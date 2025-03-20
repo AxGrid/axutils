@@ -120,9 +120,10 @@ func newChansHolder[K comparable, V any](trx K, timeout time.Duration) *chansHol
 }
 
 func (h *chansHolder[K, V]) set(data V) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.isExist {
+	h.mu.RLock()
+	exist := h.isExist
+	h.mu.RUnlock()
+	if exist {
 		return
 	}
 	h.dataCh <- data
