@@ -267,13 +267,13 @@ func (m *GuavaMap[K, V]) Get(key K) (V, error) {
 }
 
 func (m *GuavaMap[K, V]) GetStored() map[K]V {
-	resStored := make(map[K]V, len(m.stored))
+	st := make(map[K]V, len(m.stored))
 	m.mu.RLock()
 	for k, v := range m.stored {
-		resStored[k] = v.v
+		st[k] = v.v
 	}
 	m.mu.RUnlock()
-	return resStored
+	return st
 }
 
 func (m *GuavaMap[K, V]) Set(key K, val V) {
